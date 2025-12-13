@@ -9,12 +9,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "8000:8000"
+    # Ports removed - only accessible through Caddy reverse proxy
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -28,15 +27,14 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "8501:8501"
+    # Ports removed - only accessible through Caddy reverse proxy
     depends_on:
       backend:
         condition: service_started
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8501/"]
       interval: 30s
       timeout: 10s
       retries: 5
