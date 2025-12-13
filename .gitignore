@@ -116,3 +116,5 @@ dmypy.json
 deploy.sh.bak
 *.orig
 
+#CLAUDE
+CLAUDE.md
