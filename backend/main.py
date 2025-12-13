@@ -14,7 +14,10 @@ load_dotenv()
 app = FastAPI(
     title="Authentication API",
     description="JWT-based authentication backend",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url=None,  # Disable Swagger UI docs
+    redoc_url=None,  # Disable ReDoc docs
+    openapi_url=None  # Disable OpenAPI schema endpoint
 )
 
 # CORS configuration for production
