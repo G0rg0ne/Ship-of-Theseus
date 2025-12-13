@@ -1,34 +1,27 @@
 # Ship of Theseus - Authentication System
 
-A production-ready authentication system built with FastAPI (backend), Streamlit (frontend), and Caddy (reverse proxy), all containerized with Docker.
+A production-ready authentication system with FastAPI backend, Streamlit frontend, and Caddy reverse proxy—all containerized with Docker.
 
 ## Features
 
 - 🔐 JWT-based authentication
-- 🚀 Production-ready FastAPI backend
-- 🎨 Modern Streamlit frontend
-- 🔒 Automatic SSL/TLS via Caddy with Let's Encrypt
+- 🚀 FastAPI backend
+- 🎨 Streamlit frontend
+- 🔒 Automatic SSL/TLS via Caddy
 - 🐳 Docker Compose orchestration
-- 📦 Separate, evolvable services
 
 ## Quick Start
 
 ### Prerequisites
 
-- Docker and Docker Compose installed
+- Docker and Docker Compose
 - Domain name pointing to your server
 - Ports 80 and 443 open
 
 ### Setup
 
-1. **Clone and navigate to the project**:
+1. **Create `.env` file**:
    ```bash
-   cd /home/deployer/Ship-of-Theseus
-   ```
-
-2. **Configure environment variables**:
-   ```bash
-   # Create .env file with required variables
    cat > .env << EOF
    SECRET_KEY=$(openssl rand -hex 32)
    USERNAME=admin
@@ -37,21 +30,16 @@ A production-ready authentication system built with FastAPI (backend), Streamlit
    ACCESS_TOKEN_EXPIRE_MINUTES=30
    ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
    EOF
-   # Edit .env and set your actual username, email, and password
    ```
 
-3. **Update Caddyfile**:
-   - Edit `Caddyfile`
-   - Replace `gorgone.app` and `www.gorgone.app` with your actual domain
-   - Caddy will automatically obtain SSL certificates via Let's Encrypt
+2. **Update `Caddyfile`** - Replace `gorgone.app` with your domain
 
-4. **Build and start services**:
+3. **Start services**:
    ```bash
-   docker-compose build
    docker-compose up -d
    ```
 
-6. **Access your application**:
+4. **Access**:
    - Frontend: `https://yourdomain.com`
    - Backend API: `https://yourdomain.com/api/`
 
@@ -59,47 +47,32 @@ A production-ready authentication system built with FastAPI (backend), Streamlit
 
 ```
 Ship-of-Theseus/
-├── backend/          # FastAPI backend service
-├── frontend/         # Streamlit frontend service
-├── Caddyfile         # Caddy reverse proxy configuration
+├── backend/          # FastAPI service
+├── frontend/         # Streamlit service
+├── Caddyfile         # Reverse proxy config
 ├── docker-compose.yml
-└── CLAUDE.md         # Detailed architecture documentation
+└── CLAUDE.md         # Detailed documentation
 ```
 
 ## Services
 
-- **Backend** (Port 8000): FastAPI authentication API
-- **Frontend** (Port 8501): Streamlit web application
-- **Caddy** (Ports 80/443): Reverse proxy with automatic SSL/TLS
+- **Backend** (8000): FastAPI authentication API
+- **Frontend** (8501): Streamlit web app
+- **Caddy** (80/443): Reverse proxy with auto SSL
 
-## Documentation
+## Common Commands
 
-For detailed architecture, implementation details, and extension guide, see [CLAUDE.md](./CLAUDE.md).
-
-## Development
-
-### Rebuild a service:
 ```bash
+# View logs
+docker-compose logs -f [service_name]
+
+# Rebuild service
 docker-compose build [service_name]
 docker-compose up -d [service_name]
-```
 
-### View logs:
-```bash
-docker-compose logs -f [service_name]
-```
-
-### Stop all services:
-```bash
+# Stop all
 docker-compose down
 ```
-
-## Security Notes
-
-- Change the default `SECRET_KEY` in production
-- Use strong, unique passwords
-- Caddy automatically manages SSL certificates (no manual renewal needed)
-- Regularly update dependencies
 
 ## License
 
