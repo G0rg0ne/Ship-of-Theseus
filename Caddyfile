@@ -1,0 +1,46 @@
+gorgone.app, www.gorgone.app {
+    # Automatic HTTPS with Let's Encrypt
+    # Caddy will automatically obtain and renew certificates
+    
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+    }
+    
+    # Backend API routes
+    handle /api/* {
+        reverse_proxy backend:8000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            
+            # Force HTTP/1.1 for backend
+            transport http {
+                versions 1.1
+            }
+        }
+    }
+    
+    # Health check endpoint
+    handle /health {
+        respond "healthy" 200
+    }
+    
+    # Frontend Streamlit app (default route)
+    handle {
+        reverse_proxy frontend:8501 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            
+            # Force HTTP/1.1 for Streamlit (doesn't support HTTP/2 properly)
+            transport http {
+                versions 1.1
+            }
+        }
+    }
+}
+
