@@ -44,3 +44,9 @@ gorgone.app, www.gorgone.app {
     }
 }
 
+# Block direct IP access - only allow domain access
+# This catch-all block will reject any requests that don't match the domain above
+:80, :443 {
+    respond "Access denied. Please use the domain name." 403
+}
+
