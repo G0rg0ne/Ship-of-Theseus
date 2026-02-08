@@ -9,6 +9,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _parse_origins(value: str) -> List[str]:
+    """Parse comma-separated origins string into a list."""
+    if not value or not value.strip():
+        return ["http://localhost:8501"]
+    return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+
 class Settings(BaseSettings):
     """Application settings."""
     
@@ -18,12 +25,17 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     
     # Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+    SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # CORS
-    ALLOWED_ORIGINS: List[str] = os.getenv("ALLOWED_ORIGINS", "http://localhost:8501").split(",")
+    # CORS - stored as string from env (e.g. "http://localhost:8501,http://127.0.0.1:8501")
+    ALLOWED_ORIGINS: str = "http://localhost:8501"
+    
+    @property
+    def allowed_origins_list(self) -> List[str]:
+        """CORS origins as a list for FastAPI middleware."""
+        return _parse_origins(self.ALLOWED_ORIGINS)
     
     # User Configuration (from environment variables)
     USERNAME: str = os.getenv("USERNAME", "")
