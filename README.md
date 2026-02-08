@@ -95,16 +95,16 @@ Ship-of-Theseus/
 
 See `.env.example` for all available configuration options.
 
-### Required Variables:
-- `SECRET_KEY` - JWT secret key (generate with `openssl rand -hex 32`)
-- `USERNAME` - Admin username
-- `USER_EMAIL` - Admin email
-- `USER_PASSWORD` - Admin password
-- `ALLOWED_ORIGINS` - CORS origins (comma-separated)
+### Required Variables (app will not start without these):
+- `SECRET_KEY` - JWT secret key (generate with `openssl rand -hex 32`) - **REQUIRED**
+- `USERNAME` - Admin username - **REQUIRED**
+- `USER_EMAIL` - Admin email - **REQUIRED**
+- `USER_PASSWORD` - Admin password - **REQUIRED**
 
-### Optional Variables:
-- `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration (default: 30)
-- `DEBUG` - Debug mode (default: False)
+### Optional Variables (have defaults):
+- `ALLOWED_ORIGINS` - CORS origins (comma-separated, default: `http://localhost:8501`)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
+- `DEBUG` - Debug mode (default: `False`)
 
 ## 🏃 Running Locally (Development)
 

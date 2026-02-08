@@ -1,12 +1,8 @@
 """
 Application configuration settings.
 """
-import os
 from typing import List
 from pydantic_settings import BaseSettings
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 def _parse_origins(value: str) -> List[str]:
@@ -24,8 +20,8 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Authentication API"
     VERSION: str = "1.0.0"
     
-    # Security
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    # Security - REQUIRED (no defaults for security-critical values)
+    SECRET_KEY: str  # Must be set in .env - will raise error if missing
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
@@ -37,24 +33,18 @@ class Settings(BaseSettings):
         """CORS origins as a list for FastAPI middleware."""
         return _parse_origins(self.ALLOWED_ORIGINS)
     
-    # User Configuration (from environment variables)
-    USERNAME: str = os.getenv("USERNAME", "")
-    USER_EMAIL: str = os.getenv("USER_EMAIL", "")
-    USER_PASSWORD: str = os.getenv("USER_PASSWORD", "")
+    # User Configuration - REQUIRED (must be set in .env)
+    USERNAME: str  # Will raise error if missing
+    USER_EMAIL: str  # Will raise error if missing
+    USER_PASSWORD: str  # Will raise error if missing
     
-    # Debug
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    # Debug - optional with default
+    DEBUG: bool = False
     
     class Config:
         case_sensitive = True
         env_file = ".env"
 
 
+# Initialize settings - will raise ValidationError if required fields are missing
 settings = Settings()
-
-# Validate required environment variables
-if not settings.USERNAME or not settings.USER_EMAIL or not settings.USER_PASSWORD:
-    raise ValueError(
-        "Missing required environment variables: USERNAME, USER_EMAIL, USER_PASSWORD. "
-        "Please set these in your .env file."
-    )
