@@ -19,6 +19,6 @@ COPY . .
 EXPOSE 8000
 
 # Run with uvicorn (production-ready with multiple workers)
-# Listen on 0.0.0.0 to allow access from Docker network (Caddy), but not exposed to host
+# Listen on 0.0.0.0 for access from host when port is mapped
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
 

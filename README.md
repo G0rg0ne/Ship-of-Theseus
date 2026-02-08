@@ -1,22 +1,19 @@
 # Ship of Theseus - Authentication System
 
-A production-ready authentication system with FastAPI backend, Streamlit frontend, and Caddy reverse proxy—all containerized with Docker.
+An authentication system with FastAPI backend and Streamlit frontend, containerized with Docker. Set up for local development first.
 
 ## Features
 
 - 🔐 JWT-based authentication
 - 🚀 FastAPI backend
 - 🎨 Streamlit frontend
-- 🔒 Automatic SSL/TLS via Caddy
 - 🐳 Docker Compose orchestration
 
-## Quick Start
+## Quick Start (Development)
 
 ### Prerequisites
 
 - Docker and Docker Compose
-- Domain name pointing to your server
-- Ports 80 and 443 open
 
 ### Setup
 
@@ -28,20 +25,18 @@ A production-ready authentication system with FastAPI backend, Streamlit fronten
    USER_EMAIL=admin@example.com
    USER_PASSWORD=your-secure-password-here
    ACCESS_TOKEN_EXPIRE_MINUTES=30
-   ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+   ALLOWED_ORIGINS=http://localhost:8501,http://127.0.0.1:8501
    EOF
    ```
 
-2. **Update `Caddyfile`** - Replace `gorgone.app` with your domain
-
-3. **Start services**:
+2. **Start services**:
    ```bash
    docker-compose up -d
    ```
 
-4. **Access**:
-   - Frontend: `https://yourdomain.com`
-   - Backend API: `https://yourdomain.com/api/`
+3. **Access**:
+   - Frontend: http://localhost:8501
+   - Backend API: http://localhost:8000
 
 ## Project Structure
 
@@ -49,7 +44,6 @@ A production-ready authentication system with FastAPI backend, Streamlit fronten
 Ship-of-Theseus/
 ├── backend/          # FastAPI service
 ├── frontend/         # Streamlit service
-├── Caddyfile         # Reverse proxy config
 ├── docker-compose.yml
 └── CLAUDE.md         # Detailed documentation
 ```
@@ -58,7 +52,6 @@ Ship-of-Theseus/
 
 - **Backend** (8000): FastAPI authentication API
 - **Frontend** (8501): Streamlit web app
-- **Caddy** (80/443): Reverse proxy with auto SSL
 
 ## Common Commands
 

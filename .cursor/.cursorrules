@@ -1,0 +1,378 @@
+# Cursor Rules for FastAPI + Streamlit Application
+
+## Project Structure
+- `/backend` - FastAPI application
+- `/frontend` - Streamlit application
+- `/shared` - Shared utilities, models, and configurations
+- `/tests` - Test files for both backend and frontend
+- `README.md` - Living documentation (MUST BE UPDATED)
+- `DEVELOPMENT.md` - Development log and changelog (MUST BE UPDATED)
+
+## 🚨 CRITICAL: Documentation Requirements
+
+### README.md Maintenance
+**ALWAYS update README.md when:**
+- Adding new features or endpoints
+- Changing project structure
+- Adding new dependencies
+- Modifying setup/installation steps
+- Adding new environment variables
+- Changing API endpoints or schemas
+- Adding new pages to Streamlit app
+- Implementing new services or integrations
+
+**README.md must include:**
+1. Project overview and purpose
+2. Technology stack with versions
+3. Project structure/directory layout
+4. Setup and installation instructions
+5. Environment variables documentation
+6. Running the application (dev and prod)
+7. API endpoints documentation
+8. Available frontend pages/features
+9. Testing instructions
+10. Deployment notes
+11. Recent changes (link to DEVELOPMENT.md)
+
+### DEVELOPMENT.md Maintenance
+**ALWAYS append to DEVELOPMENT.md when:**
+- Completing any development task
+- Adding features
+- Fixing bugs
+- Refactoring code
+- Making architectural decisions
+- Adding new integrations
+- Changing database schemas
+- Updating dependencies
+
+**Each entry should include:**
+- Date and time
+- Type (Feature/Bugfix/Refactor/Config/Docs)
+- Description of changes
+- Files modified
+- Rationale for decisions
+- Any breaking changes
+- Dependencies added/removed
+
+**Format:**
+```markdown
+## [YYYY-MM-DD HH:MM] - TYPE
+
+### Changes
+- What was changed
+
+### Files Modified
+- `path/to/file.py`
+
+### Rationale
+Why this change was made
+
+### Breaking Changes
+Any breaking changes (if applicable)
+
+### Next Steps
+What should be done next (if applicable)
+```
+
+## Backend (FastAPI) Guidelines
+
+### Code Style
+- Use Python 3.10+ features
+- Follow PEP 8 style guide
+- Use type hints for all functions and class methods
+- Prefer Pydantic models for request/response validation
+- Use async/await for I/O operations when possible
+
+### API Design
+- Use RESTful conventions
+- Version your API (e.g., `/api/v1/`)
+- Use appropriate HTTP methods (GET, POST, PUT, DELETE, PATCH)
+- Return consistent error responses with proper status codes
+- Include proper CORS configuration for local development
+- **Document all endpoints in README.md**
+
+### File Organization
+```
+backend/
+├── app/
+│   ├── main.py              # FastAPI app initialization
+│   ├── api/
+│   │   └── v1/
+│   │       ├── endpoints/   # Route handlers
+│   │       └── deps.py      # Dependencies
+│   ├── core/
+│   │   ├── config.py        # Settings and configuration
+│   │   └── security.py      # Auth utilities
+│   ├── models/              # SQLAlchemy models
+│   ├── schemas/             # Pydantic schemas
+│   ├── services/            # Business logic
+│   └── db/
+│       └── database.py      # Database connection
+├── requirements.txt
+└── .env
+```
+
+### Best Practices
+- Use dependency injection for database sessions and authentication
+- Implement proper error handling with HTTPException
+- Use background tasks for long-running operations
+- Implement pagination for list endpoints
+- Add request validation with Pydantic
+- Use environment variables for configuration
+- Implement proper logging
+- **Update README when adding new endpoints**
+
+### Example Patterns
+```python
+# Router example
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+router = APIRouter(prefix="/api/v1/items", tags=["items"])
+
+@router.get("/{item_id}")
+async def get_item(
+    item_id: int,
+    db: Session = Depends(get_db)
+):
+    # Implementation
+    pass
+```
+
+## Frontend (Streamlit) Guidelines
+
+### Code Style
+- Use Python 3.10+ features
+- Follow PEP 8 style guide
+- Use session state for managing app state
+- Organize code into reusable components
+- Use caching (`@st.cache_data`, `@st.cache_resource`) appropriately
+
+### File Organization
+```
+frontend/
+├── app.py                   # Main Streamlit app
+├── pages/                   # Multi-page app pages
+│   ├── 1_Dashboard.py
+│   ├── 2_Settings.py
+│   └── ...
+├── components/              # Reusable UI components
+├── services/                # API client services
+│   └── api_client.py
+├── utils/                   # Helper functions
+├── requirements.txt
+└── .streamlit/
+    └── config.toml          # Streamlit configuration
+```
+
+### API Integration
+- Create a centralized API client service
+- Use `requests` or `httpx` for HTTP calls
+- Implement proper error handling for API calls
+- Show loading states during API requests
+- Handle authentication tokens properly
+
+### Best Practices
+- Use session state for app-wide state management
+- Implement proper error handling with try/except and st.error()
+- Use st.spinner() for loading states
+- Cache API responses when appropriate
+- Use forms for user input
+- Implement proper page navigation
+- Use columns and containers for layout
+- Add input validation before API calls
+- **Update README when adding new pages or features**
+
+### Example Patterns
+```python
+# API Client example
+import streamlit as st
+import requests
+
+class APIClient:
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+    
+    def get_items(self):
+        try:
+            response = requests.get(f"{self.base_url}/api/v1/items")
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            st.error(f"API Error: {e}")
+            return None
+
+# Usage in Streamlit
+if "api_client" not in st.session_state:
+    st.session_state.api_client = APIClient("http://localhost:8000")
+```
+
+## Shared Guidelines
+
+### Environment Variables
+- Use `.env` files for local development
+- Never commit `.env` files to version control
+- Use `python-dotenv` to load environment variables
+- **Document all required environment variables in README.md and .env.example**
+- **Update both when adding new variables**
+
+### Dependencies
+- Pin major versions in requirements.txt
+- Keep dependencies minimal and well-maintained
+- Separate dev dependencies if needed
+- Use virtual environments
+- **Document new dependencies in README.md and DEVELOPMENT.md**
+
+### Testing
+- Write unit tests for business logic
+- Test API endpoints with pytest and TestClient
+- Mock external dependencies
+- Aim for >80% code coverage
+- **Document test coverage and how to run tests in README.md**
+
+### Documentation
+- Add docstrings to all functions and classes
+- Maintain a README.md with setup instructions
+- Document API endpoints (use FastAPI's automatic docs)
+- Add inline comments for complex logic
+- **Keep README.md and DEVELOPMENT.md as living documents**
+
+### Common Dependencies
+```
+# Backend
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+sqlalchemy
+alembic
+python-multipart
+
+# Frontend
+streamlit
+requests
+python-dotenv
+pandas
+plotly
+
+# Shared
+pytest
+pytest-asyncio
+httpx
+```
+
+## Development Workflow
+
+1. Start backend: `uvicorn backend.app.main:app --reload`
+2. Start frontend: `streamlit run frontend/app.py`
+3. Backend runs on: http://localhost:8000
+4. Frontend runs on: http://localhost:8501
+5. API docs available at: http://localhost:8000/docs
+6. **After completing work: Update README.md and DEVELOPMENT.md**
+
+## Git Practices
+- Use meaningful commit messages
+- Create feature branches
+- Keep commits focused and atomic
+- Add `.gitignore` for Python projects
+- Don't commit sensitive data or credentials
+- **Reference DEVELOPMENT.md entries in commit messages**
+
+## Security
+- Never hardcode credentials
+- Use environment variables for secrets
+- Implement proper authentication/authorization
+- Validate all user inputs
+- Use HTTPS in production
+- Keep dependencies updated
+
+## 📝 Documentation Workflow (MANDATORY)
+
+### Before Starting Work
+1. Read README.md to understand current state
+2. Check DEVELOPMENT.md for recent changes
+3. Review existing code structure
+
+### During Development
+1. Take notes on changes being made
+2. Track files being modified
+3. Document any decisions or trade-offs
+
+### After Completing Work
+1. **Update README.md** with:
+   - New features in appropriate sections
+   - New environment variables
+   - New dependencies
+   - Changed setup/run instructions
+   - New API endpoints
+   - New frontend pages/features
+
+2. **Add entry to DEVELOPMENT.md** with:
+   - Date and time
+   - Type of change
+   - Detailed description
+   - Files modified
+   - Rationale
+   - Breaking changes (if any)
+
+3. **Update .env.example** if new variables added
+
+4. Commit with message referencing documentation
+
+### Example Documentation Update After Adding Feature
+
+**README.md Update:**
+```markdown
+## API Endpoints
+
+### Items
+- `GET /api/v1/items` - List all items
+- `GET /api/v1/items/{id}` - Get item by ID
+- `POST /api/v1/items` - Create new item (NEW)
+- `PUT /api/v1/items/{id}` - Update item (NEW)
+
+## Frontend Pages
+- Home - Dashboard overview
+- Items - CRUD operations for items (NEW)
+```
+
+**DEVELOPMENT.md Entry:**
+```markdown
+## [2024-01-15 14:30] - FEATURE
+
+### Changes
+- Added CRUD operations for items
+- Created Items page in Streamlit frontend
+- Implemented POST and PUT endpoints in FastAPI backend
+- Added ItemCreate and ItemUpdate Pydantic schemas
+
+### Files Modified
+- `backend/app/api/v1/endpoints/items.py`
+- `backend/app/schemas/item.py`
+- `frontend/pages/2_Items.py`
+- `frontend/services/api_client.py`
+
+### Rationale
+User requested ability to create and edit items through the UI
+
+### Breaking Changes
+None
+
+### Next Steps
+- Add delete functionality
+- Implement pagination for items list
+- Add search/filter capability
+```
+
+## AI Assistant Reminders
+
+When the AI assistant (Cursor) completes ANY development task, it MUST:
+
+1. ✅ Update README.md with relevant changes
+2. ✅ Add detailed entry to DEVELOPMENT.md
+3. ✅ Update .env.example if env vars changed
+4. ✅ Remind the user to review the documentation updates
+5. ✅ Suggest a git commit message that references the changes
+
+**The documentation is as important as the code itself.**

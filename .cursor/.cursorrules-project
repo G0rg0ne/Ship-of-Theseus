@@ -1,0 +1,183 @@
+# Project Context for AI Assistant
+
+## Project Overview
+This is a full-stack application using:
+- **Backend**: FastAPI (Python async web framework)
+- **Frontend**: Streamlit (Python data/web app framework)
+- **Communication**: REST API
+
+## Key Technologies
+
+### Backend Stack
+- FastAPI for REST API
+- Pydantic for data validation
+- SQLAlchemy for ORM (if using database)
+- Uvicorn as ASGI server
+- Python 3.10+
+
+### Frontend Stack
+- Streamlit for UI
+- Requests/HTTPX for API calls
+- Pandas for data manipulation (optional)
+- Plotly for visualizations (optional)
+
+## When Generating Code
+
+### For FastAPI Backend:
+1. Always use type hints
+2. Use Pydantic models for request/response schemas
+3. Implement proper error handling with HTTPException
+4. Use dependency injection for database sessions
+5. Add appropriate status codes to responses
+6. Include OpenAPI documentation via docstrings
+7. Use async/await for I/O operations
+8. Add CORS middleware for development
+
+Example structure:
+```python
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class ItemSchema(BaseModel):
+    name: str
+    description: str | None = None
+
+@app.post("/api/v1/items", response_model=ItemSchema)
+async def create_item(item: ItemSchema):
+    # Implementation
+    return item
+```
+
+### For Streamlit Frontend:
+1. Use session state for app state management
+2. Implement loading states with st.spinner()
+3. Handle errors gracefully with try/except and st.error()
+4. Cache API responses appropriately
+5. Use st.form() for user input
+6. Organize code into functions/components
+7. Use columns for layout when needed
+
+Example structure:
+```python
+import streamlit as st
+import requests
+
+st.title("My App")
+
+# Session state initialization
+if "data" not in st.session_state:
+    st.session_state.data = None
+
+# API call with error handling
+try:
+    with st.spinner("Loading..."):
+        response = requests.get("http://localhost:8000/api/v1/items")
+        response.raise_for_status()
+        st.session_state.data = response.json()
+except Exception as e:
+    st.error(f"Error: {e}")
+```
+
+## Common Patterns
+
+### API Client Service (Frontend)
+Create a dedicated API client class to handle all backend communication:
+```python
+class APIClient:
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+        
+    def get(self, endpoint: str):
+        response = requests.get(f"{self.base_url}{endpoint}")
+        response.raise_for_status()
+        return response.json()
+```
+
+### Configuration Management
+Use pydantic-settings for type-safe configuration:
+```python
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    database_url: str
+    api_key: str
+    
+    class Config:
+        env_file = ".env"
+```
+
+### Database Integration (Backend)
+```python
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+from fastapi import Depends
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+```
+
+## Development Setup
+
+### Environment Variables
+Backend (.env):
+```
+DATABASE_URL=sqlite:///./app.db
+SECRET_KEY=your-secret-key
+DEBUG=True
+CORS_ORIGINS=http://localhost:8501
+```
+
+Frontend (.env):
+```
+API_BASE_URL=http://localhost:8000
+```
+
+### Running the Application
+1. Backend: `uvicorn backend.app.main:app --reload --port 8000`
+2. Frontend: `streamlit run frontend/app.py`
+
+## Code Generation Preferences
+
+1. **Always** include error handling
+2. **Always** use type hints
+3. **Prefer** async/await for I/O operations
+4. **Prefer** composition over inheritance
+5. **Include** docstrings for functions
+6. **Validate** user inputs
+7. **Use** environment variables for configuration
+8. **Implement** proper logging
+9. **Add** comments for complex logic
+10. **Follow** RESTful conventions
+
+## Testing Approach
+
+- Use pytest for both backend and frontend
+- Mock API calls in frontend tests
+- Use FastAPI's TestClient for backend tests
+- Write integration tests for API endpoints
+- Test edge cases and error conditions
+
+## When Asked to Debug
+
+1. Check API endpoint URLs and ports
+2. Verify CORS configuration
+3. Check environment variables
+4. Review error messages in console/logs
+5. Validate request/response schemas
+6. Check network tab in browser (for Streamlit)
+
+## Security Considerations
+
+- Never commit .env files
+- Use environment variables for secrets
+- Validate all user inputs
+- Implement rate limiting (production)
+- Use HTTPS in production
+- Sanitize database queries
+- Implement proper authentication

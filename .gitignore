@@ -54,11 +54,6 @@ docker-compose.override.yml
 ssl/
 nginx/ssl/
 
-# Caddy data (if you want to exclude volumes)
-# Note: caddy_data and caddy_config are Docker volumes, but if you have local copies:
-caddy_data/
-caddy_config/
-
 # Logs
 *.log
 logs/
