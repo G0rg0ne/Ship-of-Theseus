@@ -3,6 +3,7 @@ Welcome page component for authenticated users.
 """
 import streamlit as st
 from utils.auth_utils import clear_session
+from components.pdf_section import render_pdf_section
 
 
 def render_welcome_page():
@@ -14,6 +15,10 @@ def render_welcome_page():
         user_info = st.session_state.user_info
         st.info(f"👤 Logged in as: **{user_info.get('username', 'Unknown')}**")
     
+    # PDF upload and display section
+    render_pdf_section()
+
+    st.markdown("---")
     # Logout button
     if st.button("🚪 Logout"):
         clear_session()

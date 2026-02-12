@@ -4,7 +4,7 @@ FastAPI application initialization.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.v1.endpoints import auth
+from app.api.v1.endpoints import auth, documents
 from app.services.user_service import initialize_user
 
 # Initialize the FastAPI app
@@ -28,6 +28,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix=f"{settings.API_V1_PREFIX}/auth", tags=["authentication"])
+app.include_router(documents.router, prefix=f"{settings.API_V1_PREFIX}/documents", tags=["documents"])
 
 
 @app.get("/")
