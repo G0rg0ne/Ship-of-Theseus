@@ -10,19 +10,22 @@ from app.core.config import settings
 def configure_logging():
     """
     Configure loguru logger with appropriate handlers and formatters.
-    
+
     Sets up:
-    - Console logging with color
+    - Console logging with color; in DEBUG mode, {extra} (structured fields) is shown
     - File rotation for logs
     - Different log levels based on environment
     """
     # Remove default handler
     logger.remove()
     
-    # Console handler with custom format
+    # Console handler with custom format (include {extra} in DEBUG for structured log data)
+    console_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    if settings.DEBUG:
+        console_format += " {extra}"
     logger.add(
         sys.stderr,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        format=console_format,
         level="DEBUG" if settings.DEBUG else "INFO",
         colorize=True,
     )

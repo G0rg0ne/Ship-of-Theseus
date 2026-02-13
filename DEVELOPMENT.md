@@ -6,6 +6,24 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-13] - CONFIG
+
+### Changes
+- Console logger now includes `{extra}` (structured log fields) when `DEBUG` is True
+- Enables viewing keyword-argument data (e.g. `chunks`, `user`) directly in the terminal during development
+
+### Files Modified
+- `backend/app/core/logger.py` - Conditional console format with `{extra}` in DEBUG mode
+
+### Rationale
+- Best for dev: see structured log data in the console without parsing files or JSON
+- Only in DEBUG to avoid noisy output in production
+
+### Breaking Changes
+None
+
+---
+
 ## [2026-02-13 20:15] - FEATURE
 
 ### Changes
