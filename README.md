@@ -5,6 +5,7 @@ An authentication system with FastAPI backend and Streamlit frontend, containeri
 ## Features
 
 - 🔐 JWT-based authentication
+- 📄 PDF document upload and text extraction
 - 🚀 FastAPI backend with modular architecture
 - 🎨 Streamlit frontend with component-based design
 - 🐳 Docker Compose orchestration
@@ -21,7 +22,8 @@ Ship-of-Theseus/
 │   │   ├── api/
 │   │   │   └── v1/
 │   │   │       ├── endpoints/   # API route handlers
-│   │   │       │   └── auth.py
+│   │   │       │   ├── auth.py
+│   │   │       │   └── documents.py
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
@@ -39,7 +41,8 @@ Ship-of-Theseus/
 │   ├── pages/                   # Multi-page app pages (empty - ready for expansion)
 │   ├── components/              # Reusable UI components
 │   │   ├── login_form.py
-│   │   └── welcome_page.py
+│   │   ├── welcome_page.py
+│   │   └── pdf_section.py
 │   ├── services/
 │   │   └── api_client.py        # API client
 │   ├── utils/                   # Helper functions
@@ -147,6 +150,11 @@ pytest --cov=app --cov-report=html
 - `GET /auth/me` - Get current user info (requires auth)
 - `GET /auth/verify` - Verify token validity (requires auth)
 
+### Document Management Endpoints
+- `POST /documents/upload` - Upload PDF and extract text (requires auth, max 10MB)
+- `GET /documents/current` - Get currently stored document (requires auth)
+- `DELETE /documents/current` - Clear stored document (requires auth)
+
 ## 🐳 Docker Commands
 
 ```bash
@@ -166,8 +174,11 @@ docker-compose down -v
 
 ## 📚 Documentation
 
-- [.cursor/README.md](.cursor/README.md) - Complete project documentation and standards
-- [.cursor/DEVELOPMENT.md](.cursor/DEVELOPMENT.md) - Development log and changelog
+- [DEVELOPMENT.md](DEVELOPMENT.md) - Development log and changelog
+- [.cursor/rules/README.mdc](.cursor/rules/README.mdc) - Complete project documentation and standards
+- [.cursor/rules/cursorrules.mdc](.cursor/rules/cursorrules.mdc) - Cursor AI assistant rules
+- [.cursor/rules/context.mdc](.cursor/rules/context.mdc) - Project context for AI assistant
+- [.cursor/rules/DEVELOPMENT.mdc](.cursor/rules/DEVELOPMENT.mdc) - Development guidelines
 - [tests/README.md](tests/README.md) - Testing guide
 - [shared/README.md](shared/README.md) - Shared utilities guide
 
@@ -180,7 +191,7 @@ The project follows a modular architecture:
 - **Shared**: Common utilities that can be used by both services
 - **Tests**: Comprehensive test coverage for both services
 
-See [.cursor/README.md](.cursor/README.md) for detailed development guidelines.
+See [.cursor/rules/README.mdc](.cursor/rules/README.mdc) for detailed development guidelines and project standards.
 
 ## License
 
