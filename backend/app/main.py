@@ -4,8 +4,12 @@ FastAPI application initialization.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.logger import logger, configure_logging
 from app.api.v1.endpoints import auth, documents
 from app.services.user_service import initialize_user
+
+# Configure logging
+configure_logging()
 
 # Initialize the FastAPI app
 app = FastAPI(
@@ -41,4 +45,9 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup."""
+    logger.info("Starting up application...")
+    logger.info(f"Project: {settings.PROJECT_NAME} v{settings.VERSION}")
+    logger.info(f"Debug mode: {settings.DEBUG}")
+    logger.info(f"Allowed origins: {settings.allowed_origins_list}")
     initialize_user()
+    logger.success("Application started successfully")

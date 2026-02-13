@@ -123,7 +123,7 @@ backend/
 - Implement pagination for list endpoints
 - Add request validation with Pydantic
 - Use environment variables for configuration
-- Implement proper logging
+- **Use loguru for all logging** (see Logging section below)
 - **Update README when adding new endpoints**
 
 ### Example Patterns
@@ -211,6 +211,147 @@ if "api_client" not in st.session_state:
     st.session_state.api_client = APIClient("http://localhost:8000")
 ```
 
+## Logging with Loguru
+
+### Why Loguru?
+- Simple and powerful Python logging library
+- No configuration needed for basic usage
+- Beautiful console output with colors
+- Automatic file rotation and compression
+- Thread-safe by default
+- Easy exception catching with @logger.catch decorator
+
+### Import and Usage
+```python
+# Backend - import from core logger
+from app.core.logger import logger
+
+# Frontend - import from utils logger
+from utils.logger import logger
+
+# Basic logging
+logger.debug("Debug information")
+logger.info("General information")
+logger.success("Success message")  # Unique to loguru
+logger.warning("Warning message")
+logger.error("Error message")
+logger.critical("Critical issue")
+
+# Logging with context
+logger.info(f"User {user_id} performed action")
+logger.info("User {} performed {}", user_id, action)  # Better for performance
+
+# Exception logging
+try:
+    risky_operation()
+except Exception as e:
+    logger.exception("Operation failed")  # Includes full traceback
+
+# Decorator for automatic exception logging
+@logger.catch
+def might_fail():
+    return 1 / 0  # Will log exception automatically
+```
+
+### Best Practices
+- **Use appropriate log levels:**
+  - DEBUG: Detailed information for diagnosing problems
+  - INFO: General informational messages
+  - SUCCESS: Successful operations (loguru-specific)
+  - WARNING: Warning messages for potentially harmful situations
+  - ERROR: Error messages for serious problems
+  - CRITICAL: Critical issues that may cause the application to fail
+
+- **Log context, not just messages:**
+  ```python
+  # Bad
+  logger.info("User login")
+  
+  # Good
+  logger.info("User login successful", user_id=user_id, ip=request.client.host)
+  ```
+
+- **Use structured logging:**
+  ```python
+  logger.bind(request_id=request_id).info("Processing request")
+  ```
+
+- **Don't log sensitive information:**
+  ```python
+  # Bad
+  logger.info(f"User logged in with password: {password}")
+  
+  # Good
+  logger.info(f"User logged in", user_id=user.id)
+  ```
+
+- **Use @logger.catch for critical functions:**
+  ```python
+  @logger.catch
+  async def critical_endpoint():
+      # Will automatically log exceptions with full context
+      pass
+  ```
+
+- **Log API requests and responses:**
+  ```python
+  logger.info("API request received", endpoint=request.url.path, method=request.method)
+  logger.info("API response sent", status_code=response.status_code, duration_ms=duration)
+  ```
+
+### Configuration Files
+- Backend: `backend/app/core/logger.py`
+- Frontend: `frontend/utils/logger.py`
+- Logs are stored in `logs/` directory
+- Automatic rotation at midnight
+- 30-day retention for general logs, 90 days for errors
+- Old logs are automatically compressed
+
+### Example Integration in FastAPI
+```python
+from fastapi import APIRouter, HTTPException
+from app.core.logger import logger
+
+router = APIRouter()
+
+@router.get("/items/{item_id}")
+@logger.catch  # Automatic exception logging
+async def get_item(item_id: int):
+    logger.info(f"Fetching item", item_id=item_id)
+    
+    try:
+        item = await fetch_item(item_id)
+        logger.success(f"Item fetched successfully", item_id=item_id)
+        return item
+    except ItemNotFound:
+        logger.warning(f"Item not found", item_id=item_id)
+        raise HTTPException(status_code=404, detail="Item not found")
+    except Exception as e:
+        logger.error(f"Failed to fetch item", item_id=item_id, error=str(e))
+        raise
+```
+
+### Example Integration in Streamlit
+```python
+import streamlit as st
+from utils.logger import logger, configure_logging
+
+# Configure logging once at app start
+if "logger_configured" not in st.session_state:
+    configure_logging()
+    st.session_state.logger_configured = True
+
+# Use logger throughout the app
+logger.info("User navigated to dashboard page")
+
+try:
+    data = fetch_data()
+    logger.success("Data fetched successfully", records=len(data))
+except Exception as e:
+    logger.exception("Failed to fetch data")
+    st.error("An error occurred while fetching data")
+```
+
 ## Shared Guidelines
 
 ### Environment Variables
@@ -252,6 +393,7 @@ python-dotenv
 sqlalchemy
 alembic
 python-multipart
+loguru
 
 # Frontend
 streamlit
@@ -259,6 +401,7 @@ requests
 python-dotenv
 pandas
 plotly
+loguru
 
 # Shared
 pytest

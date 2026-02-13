@@ -6,6 +6,86 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-13 20:15] - FEATURE
+
+### Changes
+- Integrated Loguru as the logging solution for the entire project
+- Added `loguru==0.7.2` to both backend and frontend requirements
+- Created logger configuration modules:
+  - `backend/app/core/logger.py` - Backend logging configuration
+  - `frontend/utils/logger.py` - Frontend logging configuration
+- Updated FastAPI main.py to initialize logging on startup
+- Added comprehensive logging section to cursor rules (`.cursor/rules/cursorrules.mdc`)
+- Configured automatic log rotation at midnight
+- Set up log retention policies (30 days for general logs, 90 days for errors)
+- Enabled automatic compression of old logs
+- Implemented colored console output for better readability
+- Created separate log files for backend and frontend in `logs/` directory
+
+### Files Modified
+- `backend/requirements.txt` - Added loguru==0.7.2
+- `frontend/requirements.txt` - Added loguru==0.7.2
+- `backend/app/core/logger.py` - Created (58 lines)
+- `frontend/utils/logger.py` - Created (43 lines)
+- `backend/app/main.py` - Imported logger and added startup logging
+- `.cursor/rules/cursorrules.mdc` - Added comprehensive Loguru logging section (150+ lines)
+- `README.md` - Added logging documentation and features
+- `DEVELOPMENT.md` - Added this entry
+
+### Rationale
+- Loguru provides a modern, simple, and powerful logging solution
+- No complex configuration needed compared to standard Python logging
+- Beautiful colored console output improves debugging experience
+- Automatic file rotation and compression reduces maintenance
+- Thread-safe by default, important for FastAPI async operations
+- Unique features like `logger.success()` and `@logger.catch` decorator
+- Consistent logging approach across backend and frontend
+- Better developer experience with less boilerplate
+
+### Technical Details
+- **Log Levels:**
+  - Console: DEBUG (if DEBUG=True), INFO (if DEBUG=False)
+  - File: DEBUG (all messages)
+  - Error file: ERROR and above
+- **Log Format:**
+  - Console: Colored with timestamp, level, module, function, line, and message
+  - File: Same information without colors
+- **Rotation:** Daily at midnight
+- **Retention:** 30 days (general), 90 days (errors)
+- **Compression:** ZIP format for old logs
+- **Thread-safe:** Enabled with `enqueue=True`
+
+### Dependencies Added
+- `loguru==0.7.2` (backend and frontend)
+
+### Breaking Changes
+None - this is a new addition to the project
+
+### Usage Examples
+```python
+# Backend
+from app.core.logger import logger
+
+logger.info("User logged in", user_id=user.id)
+logger.success("Document uploaded successfully")
+logger.error("Failed to process request", error=str(e))
+
+# Frontend
+from utils.logger import logger
+
+logger.info("Page navigation", page="dashboard")
+logger.warning("API request failed")
+```
+
+### Next Steps
+- Add logging to existing endpoints and functions
+- Implement request/response logging middleware
+- Add structured logging for API requests with request IDs
+- Consider log aggregation service for production
+- Add log monitoring and alerting
+
+---
+
 ## [2026-02-12 22:54] - FEATURE
 
 ### Changes

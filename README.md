@@ -9,6 +9,7 @@ An authentication system with FastAPI backend and Streamlit frontend, containeri
 - 🚀 FastAPI backend with modular architecture
 - 🎨 Streamlit frontend with component-based design
 - 🐳 Docker Compose orchestration
+- 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
 - ✅ Ready for testing and extension
 
@@ -27,7 +28,8 @@ Ship-of-Theseus/
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
-│   │   │   └── security.py      # JWT & password utilities
+│   │   │   ├── security.py      # JWT & password utilities
+│   │   │   └── logger.py        # Loguru logging configuration
 │   │   ├── models/              # Database models (empty - ready for expansion)
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   └── auth.py
@@ -46,7 +48,8 @@ Ship-of-Theseus/
 │   ├── services/
 │   │   └── api_client.py        # API client
 │   ├── utils/                   # Helper functions
-│   │   └── auth_utils.py
+│   │   ├── auth_utils.py
+│   │   └── logger.py            # Loguru logging configuration
 │   ├── .streamlit/
 │   │   └── config.toml
 │   ├── requirements.txt
@@ -55,6 +58,10 @@ Ship-of-Theseus/
 ├── tests/                       # Test files
 │   ├── backend/
 │   └── frontend/
+├── logs/                        # Application logs (auto-generated)
+│   ├── app_YYYY-MM-DD.log      # Backend daily logs
+│   ├── errors_YYYY-MM-DD.log   # Backend error logs
+│   └── frontend_YYYY-MM-DD.log # Frontend daily logs
 ├── .env.example                 # Environment variables template
 ├── .gitignore
 ├── docker-compose.yml
@@ -118,12 +125,16 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
+Logs will be automatically created in the `logs/` directory with automatic rotation and compression.
+
 ### Frontend
 ```bash
 cd frontend
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+Logs will be automatically created in the `logs/` directory with automatic rotation and compression.
 
 ## 🧪 Testing
 
@@ -190,6 +201,39 @@ The project follows a modular architecture:
 - **Frontend**: Streamlit with component-based design
 - **Shared**: Common utilities that can be used by both services
 - **Tests**: Comprehensive test coverage for both services
+- **Logging**: Loguru-based logging with automatic rotation, compression, and colored console output
+
+### Logging
+
+This project uses [Loguru](https://github.com/Delgan/loguru) for all logging needs.
+
+**Backend logging:**
+```python
+from app.core.logger import logger
+
+logger.info("General information")
+logger.success("Operation succeeded")
+logger.warning("Warning message")
+logger.error("Error message")
+logger.exception("Exception with traceback")
+```
+
+**Frontend logging:**
+```python
+from utils.logger import logger
+
+logger.info("User action")
+logger.success("Operation completed")
+```
+
+**Features:**
+- Automatic file rotation at midnight
+- Log retention: 30 days (general), 90 days (errors)
+- Automatic compression of old logs
+- Colored console output for better readability
+- Thread-safe logging
+- Separate log files for backend and frontend
+- Debug level logging in files, INFO level in console
 
 See [.cursor/rules/README.mdc](.cursor/rules/README.mdc) for detailed development guidelines and project standards.
 
