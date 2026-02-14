@@ -26,11 +26,15 @@ def get_extraction_service() -> EntityExtractionService:
     """Dependency to get entity extraction service."""
     if not settings.OPENAI_API_KEY:
         raise HTTPException(
-            status_code=503, detail="Entity extraction not configured"
+            status_code=503, detail="Entity extraction not configured (OPENAI_API_KEY not set)"
+        )
+    if not settings.ENTITY_EXTRACTION_MODEL:
+        raise HTTPException(
+            status_code=503, detail="Entity extraction not configured (ENTITY_EXTRACTION_MODEL not set)"
         )
     return EntityExtractionService(
         api_key=settings.OPENAI_API_KEY,
-        model=settings.ENTITY_EXTRACTION_MODEL,
+        model=settings.ENTITY_EXTRACTION_MODEL or "gpt-4o-mini",
     )
 
 
