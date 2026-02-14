@@ -171,4 +171,88 @@ class APIClient:
             return False, detail if isinstance(detail, str) else str(detail)
         except Exception as e:
             return False, str(e)
-    
+
+    def start_entity_extraction(self, token: str) -> Tuple[bool, Optional[str], str]:
+        """
+        Start entity extraction on the user's current document.
+
+        Args:
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, job_id, error_message). job_id is set only when success is True.
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.post(
+                f"{self.base_url}/api/entities/extract",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return True, data.get("job_id", ""), ""
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to start extraction")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+
+    def get_extraction_status(
+        self, job_id: str, token: str
+    ) -> Tuple[bool, Optional[Dict], str]:
+        """
+        Get status and progress of an entity extraction job.
+
+        Args:
+            job_id: Extraction job ID
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, status_data, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.get(
+                f"{self.base_url}/api/entities/extract/status/{job_id}",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return True, response.json(), ""
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to get status")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+
+    def get_extraction_result(
+        self, job_id: str, token: str
+    ) -> Tuple[bool, Optional[Dict], str]:
+        """
+        Get extraction result when the job is completed.
+
+        Args:
+            job_id: Extraction job ID
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, entities_data, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.get(
+                f"{self.base_url}/api/entities/extract/result/{job_id}",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return True, response.json(), ""
+            if response.status_code == 202:
+                return False, None, "Extraction still in progress"
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to get result")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+

@@ -19,7 +19,7 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 
 - 🔐 JWT-based authentication
 - 📄 PDF document upload and text extraction
-- 🔍 Entity extraction from documents (LLM, parallel with progress tracking)
+- 🔍 Entity extraction from documents (LLM, parallel with progress tracking); "Process Document" runs extraction with progress bar and shows entities in a separate section
 - 📦 Redis cache (documents, extraction jobs); in-memory fallback when Redis is not set
 - 🚀 FastAPI backend with modular architecture
 - 🎨 Streamlit frontend with component-based design

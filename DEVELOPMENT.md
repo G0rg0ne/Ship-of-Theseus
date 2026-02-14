@@ -9,6 +9,33 @@ This file tracks all development changes, features, bug fixes, and architectural
 ## [2026-02-14] - FEATURE
 
 ### Changes
+- **Entity extraction after upload**: Clicking "Process Document" now uploads the PDF and immediately starts entity extraction. The UI polls extraction status and shows a progress bar until completion (timeout 5 minutes).
+- **API client**: Added `start_entity_extraction`, `get_extraction_status`, and `get_extraction_result` to the frontend `APIClient` for the existing entity endpoints.
+- **Extracted entities section**: When extraction completes, results are stored in session state and displayed in an expandable "📊 Extracted Entities" section (People, Organizations, Locations, Dates, Key terms). Entities are aggregated and deduplicated across chunks.
+- **Session state**: `extraction_results` is set when extraction completes, cleared when the user clears the document or processes a new document.
+
+### Files Modified
+- `frontend/services/api_client.py` – Added three entity extraction API methods
+- `frontend/components/pdf_section.py` – New process flow (upload → start extraction → poll with progress → fetch result → display); added `_aggregate_entities` and `_render_entities_section`; clear extraction_results on document clear
+- `README.md` – Feature list updated for Process Document + entity display
+- `DEVELOPMENT.md` – This entry
+
+### Rationale
+- Single action for the user: one click to upload and extract entities.
+- Progress feedback improves UX for long-running extraction.
+- Entities in a separate expander keep the page organized.
+
+### Breaking Changes
+None
+
+### Next Steps
+None
+
+---
+
+## [2026-02-14] - FEATURE
+
+### Changes
 - **Redis cache**: Added Redis as project-wide cache (Docker Compose service). Cache layer in `backend/app/core/cache.py` with `cache_get`, `cache_set`, `cache_delete`; falls back to in-memory when `REDIS_URL` is not set.
 - **Documents in Redis**: Document upload/current/delete now use Redis (key `documents:{user_id}`, TTL 24h). Removed in-memory `_documents_cache`.
 - **Entity extraction parallel + progress**: Entity extraction runs in parallel batches (`ENTITY_EXTRACTION_BATCH_SIZE`, default 5). Progress and result stored in Redis (`extraction:job:{job_id}`, TTL 1h). New endpoints:
