@@ -1,7 +1,7 @@
 """
 Application configuration settings.
 """
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings
 
 
@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     
     # Debug - optional with default
     DEBUG: bool = False
+    # LLM Configuration
+    OPENAI_API_KEY: Optional[str] = None
+    ENTITY_EXTRACTION_MODEL: str = "gpt-4o-mini"
+    ENABLE_ENTITY_EXTRACTION: bool = False
     
     class Config:
         case_sensitive = True

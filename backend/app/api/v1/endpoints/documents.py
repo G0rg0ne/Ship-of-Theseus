@@ -85,8 +85,6 @@ async def upload_document(
 
     try:
         text_content = _extract_text_from_pdf(content)
-        chunks = _chunk_text(text_content)
-        logger.info("Text chunks extracted", user=user_id, chunks=len(chunks))
         
     except ValueError as e:
         logger.error("PDF extraction failed", user=user_id, error=str(e))
