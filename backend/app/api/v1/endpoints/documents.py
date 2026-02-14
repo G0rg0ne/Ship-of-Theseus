@@ -1,8 +1,9 @@
 """
 Document upload and retrieval endpoints.
+Uses Redis (or in-memory fallback) for document storage.
 """
 from datetime import datetime
-from typing import Dict, Any, Tuple, List
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -11,11 +12,15 @@ from io import BytesIO
 
 from app.api.v1.deps import get_current_user
 from app.core.logger import logger
+from app.core.cache import (
+    cache_get,
+    cache_set,
+    cache_delete,
+    cache_key_document,
+    DOCUMENT_TTL,
+)
 
 router = APIRouter()
-
-# In-memory storage: keyed by user email
-_documents_cache: Dict[str, Dict[str, Any]] = {}
 
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 ALLOWED_CONTENT_TYPE = "application/pdf"
@@ -99,22 +104,25 @@ async def upload_document(
             detail=f"Could not read PDF: {e}",
         )
 
-    _documents_cache[user_id] = {
+    doc_payload = {
         "filename": file.filename or "document.pdf",
         "content": text_content,
         "uploaded_at": datetime.utcnow().isoformat() + "Z",
     }
-    
-    logger.success("Document uploaded successfully", 
-                   user=user_id, 
-                   filename=file.filename, 
-                   size_bytes=len(content),
-                   text_length=len(text_content))
+    await cache_set(cache_key_document(user_id), doc_payload, ttl_seconds=DOCUMENT_TTL)
+
+    logger.success(
+        "Document uploaded successfully",
+        user=user_id,
+        filename=file.filename,
+        size_bytes=len(content),
+        text_length=len(text_content),
+    )
 
     return {
-        "filename": _documents_cache[user_id]["filename"],
+        "filename": doc_payload["filename"],
         "content": text_content,
-        "uploaded_at": _documents_cache[user_id]["uploaded_at"],
+        "uploaded_at": doc_payload["uploaded_at"],
     }
 
 
@@ -127,16 +135,18 @@ async def get_current_document(
     """
     user_id = current_user.get("email") or current_user.get("username", "default")
     logger.info("Document retrieval request", user=user_id)
-    
-    doc = _documents_cache.get(user_id)
+
+    doc = await cache_get(cache_key_document(user_id))
     if not doc:
         logger.warning("No document found for user", user=user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No document uploaded",
         )
-    
-    logger.success("Document retrieved successfully", user=user_id, filename=doc.get("filename"))
+
+    logger.success(
+        "Document retrieved successfully", user=user_id, filename=doc.get("filename")
+    )
     return doc
 
 
@@ -149,11 +159,15 @@ async def clear_current_document(
     """
     user_id = current_user.get("email") or current_user.get("username", "default")
     logger.info("Document deletion request", user=user_id)
-    
-    doc = _documents_cache.pop(user_id, None)
+
+    key = cache_key_document(user_id)
+    doc = await cache_get(key)
+    await cache_delete(key)
     if doc:
-        logger.success("Document deleted successfully", user=user_id, filename=doc.get("filename"))
+        logger.success(
+            "Document deleted successfully", user=user_id, filename=doc.get("filename")
+        )
     else:
         logger.info("No document to delete", user=user_id)
-    
+
     return {"message": "Document cleared"}

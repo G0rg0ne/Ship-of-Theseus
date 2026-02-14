@@ -1,6 +1,22 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: ship_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   backend:
     build:
       context: ./backend
@@ -11,6 +27,9 @@ services:
       - .env
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - app_network
     healthcheck:
@@ -45,4 +64,7 @@ services:
 networks:
   app_network:
     driver: bridge
+
+volumes:
+  redis_data:
 

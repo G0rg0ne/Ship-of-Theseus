@@ -171,3 +171,4 @@ class APIClient:
             return False, detail if isinstance(detail, str) else str(detail)
         except Exception as e:
             return False, str(e)
+    

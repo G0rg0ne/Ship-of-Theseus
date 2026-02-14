@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logger import logger, configure_logging
-from app.api.v1.endpoints import auth, documents
+from app.api.v1.endpoints import auth, documents, entities
 from app.services.user_service import initialize_user
 
 # Configure logging
@@ -33,6 +33,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix=f"{settings.API_V1_PREFIX}/auth", tags=["authentication"])
 app.include_router(documents.router, prefix=f"{settings.API_V1_PREFIX}/documents", tags=["documents"])
+app.include_router(entities.router, prefix=f"{settings.API_V1_PREFIX}/entities", tags=["entities"])
 
 
 @app.get("/")

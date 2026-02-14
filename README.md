@@ -19,9 +19,11 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 
 - 🔐 JWT-based authentication
 - 📄 PDF document upload and text extraction
+- 🔍 Entity extraction from documents (LLM, parallel with progress tracking)
+- 📦 Redis cache (documents, extraction jobs); in-memory fallback when Redis is not set
 - 🚀 FastAPI backend with modular architecture
 - 🎨 Streamlit frontend with component-based design
-- 🐳 Docker Compose orchestration
+- 🐳 Docker Compose orchestration (backend, frontend, Redis)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
 - ✅ Ready for testing and extension
@@ -37,17 +39,21 @@ Ship-of-Theseus/
 │   │   │   └── v1/
 │   │   │       ├── endpoints/   # API route handlers
 │   │   │       │   ├── auth.py
-│   │   │       │   └── documents.py
+│   │   │       │   ├── documents.py
+│   │   │       │   └── entities.py   # Entity extraction (parallel, progress)
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
-│   │   │   ├── security.py      # JWT & password utilities
+│   │   │   ├── cache.py        # Redis cache manager
+│   │   │   ├── security.py     # JWT & password utilities
 │   │   │   └── logger.py        # Loguru logging configuration
 │   │   ├── models/              # Database models (empty - ready for expansion)
 │   │   ├── schemas/             # Pydantic schemas
-│   │   │   └── auth.py
+│   │   │   ├── auth.py
+│   │   │   └── entities.py
 │   │   ├── services/            # Business logic
-│   │   │   └── user_service.py
+│   │   │   ├── user_service.py
+│   │   │   └── entity_extraction_service.py
 │   │   └── db/                  # Database connection (empty - ready for expansion)
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -128,6 +134,10 @@ See `.env.example` for all available configuration options.
 - `ALLOWED_ORIGINS` - CORS origins (comma-separated, default: `http://localhost:8501`)
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
 - `DEBUG` - Debug mode (default: `False`)
+- `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used.
+- `OPENAI_API_KEY` - Required for entity extraction; if unset, extraction endpoints return 503.
+- `ENTITY_EXTRACTION_MODEL` - LLM model for extraction (default: `gpt-4o-mini`)
+- `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel (default: `5`)
 
 ## 🏃 Running Locally (Development)
 
@@ -175,9 +185,22 @@ pytest --cov=app --cov-report=html
 - `GET /auth/verify` - Verify token validity (requires auth)
 
 ### Document Management Endpoints
-- `POST /documents/upload` - Upload PDF and extract text (requires auth, max 10MB)
+- `POST /documents/upload` - Upload PDF and extract text (requires auth, max 10MB); stored in Redis
 - `GET /documents/current` - Get currently stored document (requires auth)
 - `DELETE /documents/current` - Clear stored document (requires auth)
+
+### Entity Extraction Endpoints (parallel, progress via Redis)
+- `POST /entities/extract` - Start entity extraction on current document; returns `job_id` (requires auth)
+- `GET /entities/extract/status/{job_id}` - Get extraction progress: status, `completed_chunks`/`total_chunks` (requires auth)
+- `GET /entities/extract/result/{job_id}` - Get extraction result when completed (requires auth; 202 if still running)
+
+## 🐳 Docker and Redis
+
+With Docker Compose, the backend uses **Redis** for caching:
+- **Documents**: Stored under `documents:{user_id}` (TTL 24h)
+- **Extraction jobs**: Status and result under `extraction:job:{job_id}` (TTL 1h)
+
+Redis runs as a service `redis`; the backend gets `REDIS_URL=redis://redis:6379/0` automatically. For local runs without Docker, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
 
 ## 🐳 Docker Commands
 

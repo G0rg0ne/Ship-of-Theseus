@@ -6,6 +6,45 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-14] - FEATURE
+
+### Changes
+- **Redis cache**: Added Redis as project-wide cache (Docker Compose service). Cache layer in `backend/app/core/cache.py` with `cache_get`, `cache_set`, `cache_delete`; falls back to in-memory when `REDIS_URL` is not set.
+- **Documents in Redis**: Document upload/current/delete now use Redis (key `documents:{user_id}`, TTL 24h). Removed in-memory `_documents_cache`.
+- **Entity extraction parallel + progress**: Entity extraction runs in parallel batches (`ENTITY_EXTRACTION_BATCH_SIZE`, default 5). Progress and result stored in Redis (`extraction:job:{job_id}`, TTL 1h). New endpoints:
+  - `POST /api/entities/extract` – start extraction, returns `job_id`
+  - `GET /api/entities/extract/status/{job_id}` – progress (status, completed_chunks, total_chunks)
+  - `GET /api/entities/extract/result/{job_id}` – result when completed (202 if still running)
+- **Background task**: Extraction runs in FastAPI `BackgroundTasks`; clients poll status/result.
+
+### Files Modified
+- `docker-compose.yml` – Added `redis` service; backend `depends_on` redis, env `REDIS_URL`
+- `backend/app/core/config.py` – `REDIS_URL`, `ENTITY_EXTRACTION_BATCH_SIZE`
+- `backend/app/core/cache.py` – New: Redis + in-memory cache abstraction
+- `backend/app/api/v1/endpoints/documents.py` – Use cache for document storage
+- `backend/app/api/v1/endpoints/entities.py` – Rewritten: POST extract (job_id), GET status, GET result
+- `backend/app/services/entity_extraction_service.py` – Added `extract_entities_async`, `extract_from_chunks_parallel` with Redis progress updates
+- `backend/app/schemas/entities.py` – Added `ExtractionJobStatus`, `ExtractionJobStarted`
+- `backend/app/main.py` – Registered entities router
+- `backend/requirements.txt` – Added `langchain-openai`, `redis`
+- `README.md` – Features, project structure, API endpoints, env vars, Docker/Redis section
+- `DEVELOPMENT.md` – This entry
+
+### Rationale
+- Single cache backend (Redis) for documents and extraction jobs; persistence across restarts when using Docker.
+- Parallel extraction reduces latency for large documents; progress tracking improves UX.
+- Optional Redis allows local dev without Docker (in-memory fallback).
+
+### Dependencies Added
+- `langchain-openai==0.2.0`
+- `redis>=5.0.0`
+
+### Breaking Changes
+- Document storage is no longer in-process memory. With Redis, documents are in Redis; without Redis, they are in a new in-memory cache (lost on restart as before). API contract unchanged.
+- Entity extraction is now async (job-based). Old synchronous `POST /extract` returning `DocumentEntities` is replaced by POST → `job_id`, then GET status/result.
+
+---
+
 ## [2026-02-13] - CONFIG
 
 ### Changes

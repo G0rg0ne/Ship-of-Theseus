@@ -11,3 +11,5 @@ PyPDF2==3.0.1
 python-multipart==0.0.6
 loguru==0.7.2
 langchain==0.3.20
+langchain-openai==0.2.0
+redis>=5.0.0

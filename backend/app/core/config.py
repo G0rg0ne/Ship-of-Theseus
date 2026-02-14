@@ -40,10 +40,14 @@ class Settings(BaseSettings):
     
     # Debug - optional with default
     DEBUG: bool = False
+    
+    # Redis (optional; in-memory fallback when not set)
+    REDIS_URL: Optional[str] = None
+    
     # LLM Configuration
     OPENAI_API_KEY: Optional[str] = None
     ENTITY_EXTRACTION_MODEL: str = "gpt-4o-mini"
-    ENABLE_ENTITY_EXTRACTION: bool = False
+    ENTITY_EXTRACTION_BATCH_SIZE: int = 5
     
     class Config:
         case_sensitive = True

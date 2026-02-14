@@ -34,3 +34,20 @@ class DocumentEntities(BaseModel):
     filename: str
     chunk_entities: List[ExtractedEntities]
     extracted_at: str
+
+
+class ExtractionJobStatus(BaseModel):
+    """Status of an entity extraction job (for progress tracking)."""
+    job_id: str
+    status: str  # pending | running | completed | failed
+    total_chunks: int
+    completed_chunks: int
+    filename: Optional[str] = None
+    created_at: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ExtractionJobStarted(BaseModel):
+    """Response when an extraction job is started."""
+    job_id: str
+    message: str = "Entity extraction started. Poll /extract/status/{job_id} for progress."
