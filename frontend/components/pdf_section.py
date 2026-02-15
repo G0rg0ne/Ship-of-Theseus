@@ -9,83 +9,49 @@ EXTRACTION_POLL_INTERVAL_SEC = 2
 EXTRACTION_TIMEOUT_SEC = 300  # 5 minutes
 
 
-def _aggregate_entities(result_data: dict) -> dict:
-    """Aggregate entities from chunk_entities into flat lists (deduped by display string)."""
-    chunks = result_data.get("chunk_entities") or []
-    people_set = set()
-    orgs_set = set()
-    locations_set = set()
-    dates_set = set()
-    key_terms_set = set()
-    for chunk in chunks:
-        for p in chunk.get("people") or []:
-            name = p.get("name", "").strip()
-            if name:
-                extra = []
-                if p.get("role"):
-                    extra.append(p["role"])
-                if p.get("organization"):
-                    extra.append(p["organization"])
-                display = f"{name}" + (f" ({', '.join(extra)})" if extra else "")
-                people_set.add(display)
-        for o in chunk.get("organizations") or []:
-            name = o.get("name", "").strip()
-            if name:
-                extra = []
-                if o.get("type"):
-                    extra.append(o["type"])
-                if o.get("location"):
-                    extra.append(o["location"])
-                display = f"{name}" + (f" ({', '.join(extra)})" if extra else "")
-                orgs_set.add(display)
-        for loc in chunk.get("locations") or []:
-            if loc and str(loc).strip():
-                locations_set.add(str(loc).strip())
-        for d in chunk.get("dates") or []:
-            text = d.get("text", "").strip()
-            if text:
-                ctx = d.get("context")
-                display = f"{text}" + (f" — {ctx}" if ctx else "")
-                dates_set.add(display)
-        for term in chunk.get("key_terms") or []:
-            if term and str(term).strip():
-                key_terms_set.add(str(term).strip())
-    return {
-        "people": sorted(people_set),
-        "organizations": sorted(orgs_set),
-        "locations": sorted(locations_set),
-        "dates": sorted(dates_set),
-        "key_terms": sorted(key_terms_set),
-    }
-
-
-def _render_entities_section(result_data: dict) -> None:
-    """Render expandable section with extracted entities by type."""
-    aggregated = _aggregate_entities(result_data)
-    has_any = any(aggregated[k] for k in aggregated)
-    if not has_any:
+def _render_entities_with_relationships_section(graph_data: dict) -> None:
+    """Render expandable section with entities (nodes) and their relationships (edges)."""
+    nodes = graph_data.get("nodes") or []
+    edges = graph_data.get("edges") or []
+    if not nodes and not edges:
         return
-    with st.expander("📊 Extracted Entities", expanded=True):
-        if aggregated["people"]:
-            st.markdown("**People**")
-            for item in aggregated["people"]:
-                st.write(f"- {item}")
-        if aggregated["organizations"]:
-            st.markdown("**Organizations**")
-            for item in aggregated["organizations"]:
-                st.write(f"- {item}")
-        if aggregated["locations"]:
-            st.markdown("**Locations**")
-            for item in aggregated["locations"]:
-                st.write(f"- {item}")
-        if aggregated["dates"]:
-            st.markdown("**Dates**")
-            for item in aggregated["dates"]:
-                st.write(f"- {item}")
-        if aggregated["key_terms"]:
-            st.markdown("**Key terms**")
-            for item in aggregated["key_terms"]:
-                st.write(f"- {item}")
+    with st.expander("📊 Entities & Relationships", expanded=True):
+        # Build lookup: node id -> node (for edge labels)
+        id_to_node = {n.get("id"): n for n in nodes}
+        # Group nodes by type
+        by_type = {}
+        for n in nodes:
+            t = n.get("type") or "other"
+            by_type.setdefault(t, []).append(n)
+        type_order = ("person", "organization", "location", "key_term", "other")
+        for node_type in type_order:
+            if node_type not in by_type:
+                continue
+            label = node_type.replace("_", " ").title()
+            st.markdown(f"**{label}s**")
+            for n in sorted(by_type[node_type], key=lambda x: (x.get("label") or "")):
+                lbl = n.get("label") or n.get("id") or "—"
+                props = n.get("properties") or {}
+                if props:
+                    parts = [f"{k}: {v}" for k, v in props.items() if v]
+                    st.write(f"- **{lbl}** " + (f" ({', '.join(parts)})" if parts else ""))
+                else:
+                    st.write(f"- **{lbl}**")
+        if edges:
+            st.markdown("---")
+            st.markdown("**Relationships**")
+            for e in edges:
+                src = id_to_node.get(e.get("source"), {})
+                tgt = id_to_node.get(e.get("target"), {})
+                src_label = src.get("label") or e.get("source", "?")
+                tgt_label = tgt.get("label") or e.get("target", "?")
+                rel = e.get("relation_type") or "related_to"
+                props = e.get("properties") or {}
+                ctx = props.get("context")
+                line = f"**{src_label}** — *{rel}* → **{tgt_label}**"
+                if ctx:
+                    line += f"  \n  _{ctx}_"
+                st.write(line)
 
 
 def render_pdf_section():
@@ -158,23 +124,84 @@ def render_pdf_section():
                                 break
                             completed = status_data.get("completed_chunks", 0)
                             total = max(status_data.get("total_chunks", 1), 1)
-                            progress_bar.progress(completed / total)
+                            progress_bar.progress(0.4 * (completed / total))
                             status_placeholder.caption(
                                 f"Extracting entities: {completed}/{total} chunks"
                             )
                             status = status_data.get("status", "pending")
                             if status == "completed":
-                                success, result_data, error = api_client.get_extraction_result(
-                                    job_id, token
-                                )
-                                if success and result_data:
-                                    st.session_state.extraction_results = result_data
-                                    extraction_ok = True
-                                else:
-                                    status_placeholder.error(
-                                        f"❌ {error or 'Failed to fetch extraction result.'}"
+                                # Wait for relationship extraction and graph
+                                while (time.time() - start_time) < EXTRACTION_TIMEOUT_SEC:
+                                    success, graph_data, error = api_client.get_extraction_graph(
+                                        job_id, token
                                     )
-                                break
+                                    if success and graph_data:
+                                        st.session_state.extraction_results = graph_data
+                                        extraction_ok = True
+                                        progress_bar.progress(1.0)
+                                        status_placeholder.caption(
+                                            "Entities and relationships ready."
+                                        )
+                                        break
+                                    rel_detail = (
+                                        getattr(error, "detail", None)
+                                        if hasattr(error, "detail")
+                                        else error
+                                    )
+                                    status_placeholder.caption(
+                                        "Extracting relationships..."
+                                    )
+                                    progress_bar.progress(0.4 + 0.6 * 0.5)
+                                    time.sleep(EXTRACTION_POLL_INTERVAL_SEC)
+                                if not extraction_ok:
+                                    # Fallback: try entity-only result if graph never ready
+                                    success, result_data, _ = api_client.get_extraction_result(
+                                        job_id, token
+                                    )
+                                    if success and result_data:
+                                        # Build minimal graph from entities for display
+                                        nodes = []
+                                        seen = set()
+                                        for chunk in result_data.get("chunk_entities") or []:
+                                            for p in chunk.get("people") or []:
+                                                name = (p.get("name") or "").strip()
+                                                if name and name not in seen:
+                                                    seen.add(name)
+                                                    nodes.append({
+                                                        "id": f"n_{len(nodes)}",
+                                                        "label": name,
+                                                        "type": "person",
+                                                        "properties": {k: v for k, v in p.items() if k != "name" and v},
+                                                    })
+                                            for o in chunk.get("organizations") or []:
+                                                name = (o.get("name") or "").strip()
+                                                if name and name not in seen:
+                                                    seen.add(name)
+                                                    nodes.append({
+                                                        "id": f"n_{len(nodes)}",
+                                                        "label": name,
+                                                        "type": "organization",
+                                                        "properties": {k: v for k, v in o.items() if k != "name" and v},
+                                                    })
+                                            for loc in chunk.get("locations") or []:
+                                                name = (str(loc) or "").strip()
+                                                if name and name not in seen:
+                                                    seen.add(name)
+                                                    nodes.append({"id": f"n_{len(nodes)}", "label": name, "type": "location", "properties": {}})
+                                            for term in chunk.get("key_terms") or []:
+                                                name = (str(term) or "").strip()
+                                                if name and name not in seen:
+                                                    seen.add(name)
+                                                    nodes.append({"id": f"n_{len(nodes)}", "label": name, "type": "key_term", "properties": {}})
+                                        st.session_state.extraction_results = {
+                                            "nodes": nodes,
+                                            "edges": [],
+                                            "filename": result_data.get("filename", ""),
+                                            "entity_count": len(nodes),
+                                            "relationship_count": 0,
+                                        }
+                                        extraction_ok = True
+                                break  # exit outer poll loop when entity extraction completed
                             if status == "failed":
                                 status_placeholder.error(
                                     f"❌ Extraction failed: {status_data.get('error', 'Unknown error')}"
@@ -214,9 +241,9 @@ def render_pdf_section():
         else:
             st.caption("No text could be extracted from this PDF.")
 
-        # Extracted entities section (separate expander)
+        # Entities and relationships section (graph: nodes + edges)
         if "extraction_results" in st.session_state:
-            _render_entities_section(st.session_state.extraction_results)
+            _render_entities_with_relationships_section(st.session_state.extraction_results)
 
         if st.button("Clear document", key="clear_pdf"):
             success, error = api_client.clear_current_document(token)

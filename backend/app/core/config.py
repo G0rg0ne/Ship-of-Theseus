@@ -48,7 +48,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ENTITY_EXTRACTION_MODEL: str = "gpt-4o-mini"
     ENTITY_EXTRACTION_BATCH_SIZE: int = 5
-    
+
+    # Relationship extraction (runs after entity extraction)
+    RELATIONSHIP_EXTRACTION_BATCH_SIZE: int = 5
+    AUTO_EXTRACT_RELATIONSHIPS: bool = True
+
     class Config:
         case_sensitive = True
         env_file = ".env"

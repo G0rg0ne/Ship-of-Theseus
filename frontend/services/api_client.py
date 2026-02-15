@@ -256,3 +256,34 @@ class APIClient:
         except Exception as e:
             return False, None, str(e)
 
+    def get_extraction_graph(
+        self, job_id: str, token: str
+    ) -> Tuple[bool, Optional[Dict], str]:
+        """
+        Get the complete graph (nodes + edges) for an entity extraction job.
+        Returns 202 from backend when relationship extraction is still in progress.
+
+        Args:
+            job_id: Entity extraction job ID (same as from start_entity_extraction)
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, graph_data with nodes/edges, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.get(
+                f"{self.base_url}/api/entities/extract/graph/{job_id}",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return True, response.json(), ""
+            if response.status_code == 202:
+                return False, None, "Graph not ready"
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to get graph")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+

@@ -124,6 +124,11 @@ def cache_key_extraction_job(job_id: str) -> str:
     return f"extraction:job:{job_id}"
 
 
+def cache_key_relationship_job(job_id: str) -> str:
+    """Key for a relationship extraction job's status/result."""
+    return f"extraction:relationships:job:{job_id}"
+
+
 # Default TTLs (seconds)
 DOCUMENT_TTL = 24 * 60 * 60  # 24 hours
 EXTRACTION_JOB_TTL = 60 * 60  # 1 hour
