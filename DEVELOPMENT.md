@@ -6,6 +6,63 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-16] - FEATURE
+
+### Changes
+- **Relationship extraction service**: New service that extracts relationships (Entity A, Relation, Entity B) from text, constrained to use only previously extracted entities. Source and target of every relationship must match existing nodes.
+- **Automatic trigger**: After entity extraction completes, relationship extraction is automatically started (configurable via `AUTO_EXTRACT_RELATIONSHIPS`). Relationship job id is `{entity_job_id}_rel`.
+- **Graph-ready output**: Results are returned as nodes (entities) and edges (relationships), suitable for graph DBs (e.g. Neo4j). Validation and deduplication of edges applied.
+- **Parallel processing**: Relationship extraction runs in parallel batches with progress tracking in Redis (`RELATIONSHIP_EXTRACTION_BATCH_SIZE`).
+- **New API endpoints**: `GET /entities/extract/relationships/status/{job_id}`, `GET /entities/extract/relationships/result/{job_id}`, `GET /entities/extract/graph/{job_id}` (graph uses entity job_id and returns when relationship job has completed).
+- **New schemas**: `Relationship`, `ExtractedRelationships`, `GraphNode`, `GraphEdge`, `DocumentGraph`, `RelationshipJobStatus` in `backend/app/schemas/relationships.py`.
+- **Cache**: New cache key `cache_key_relationship_job(job_id)` for relationship jobs.
+- **Config**: `RELATIONSHIP_EXTRACTION_BATCH_SIZE`, `AUTO_EXTRACT_RELATIONSHIPS` in settings; documented in `.env.example`.
+
+### Files Modified
+- `backend/app/schemas/relationships.py` – Created
+- `backend/app/services/relationship_extraction_service.py` – Created
+- `backend/app/core/cache.py` – Added `cache_key_relationship_job`
+- `backend/app/core/config.py` – Added `RELATIONSHIP_EXTRACTION_BATCH_SIZE`, `AUTO_EXTRACT_RELATIONSHIPS`
+- `backend/app/api/v1/endpoints/entities.py` – Auto-trigger relationship task after entity extraction; added `_run_relationship_task`; added relationship status, result, and graph endpoints
+- `.env.example` – Created/updated with relationship extraction variables
+- `README.md` – Features, project structure, env vars, API endpoints, Redis keys
+- `DEVELOPMENT.md` – This entry
+
+### Rationale
+- Graph RAG indexing requires both entities and relationships; constraining relationships to extracted entities keeps the graph consistent.
+- Single flow: user starts entity extraction once; relationship extraction follows automatically.
+- Graph-ready format (nodes + edges) supports downstream use (e.g. Neo4j, visualization).
+
+### Breaking Changes
+None. New endpoints and optional config; existing entity extraction flow unchanged.
+
+### Next Steps
+- None (frontend now polls graph and displays entities with relationships).
+
+---
+
+## [2026-02-16] - FEATURE (Frontend)
+
+### Changes
+- **Replaced "Extracted Entities" with "Entities & Relationships"**: The PDF section now shows entities (nodes) with their relationships (edges) in a single expander. Entities are grouped by type (Person, Organization, Location, Key term); relationships are listed as **Source** — *relation_type* → **Target** with optional context.
+- **Process flow**: After entity extraction completes, the frontend polls `GET /entities/extract/graph/{job_id}` until the graph is ready (relationship extraction runs automatically on the backend). Progress shows "Extracting entities" then "Extracting relationships..." then "Entities and relationships ready."
+- **Fallback**: If the graph is not ready before timeout, a minimal graph is built from the entity extraction result (nodes only, no edges) so the section still displays.
+- **API client**: Added `get_extraction_graph(job_id, token)` to fetch the graph (nodes + edges).
+
+### Files Modified
+- `frontend/services/api_client.py` – Added `get_extraction_graph`
+- `frontend/components/pdf_section.py` – Replaced `_aggregate_entities` / `_render_entities_section` with `_render_entities_with_relationships_section`; process flow now waits for graph after entity extraction; session state `extraction_results` stores graph data (nodes, edges)
+- `README.md` – Feature description updated
+
+### Rationale
+- User request to show entities together with their relationships in one place.
+- Aligns UI with backend graph output (nodes + edges).
+
+### Breaking Changes
+None. Section title and content changed; session state key `extraction_results` now holds graph-shaped data instead of raw entity chunks.
+
+---
+
 ## [2026-02-14] - FEATURE
 
 ### Changes

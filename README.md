@@ -19,8 +19,9 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 
 - 🔐 JWT-based authentication
 - 📄 PDF document upload and text extraction
-- 🔍 Entity extraction from documents (LLM, parallel with progress tracking); "Process Document" runs extraction with progress bar and shows entities in a separate section
-- 📦 Redis cache (documents, extraction jobs); in-memory fallback when Redis is not set
+- 🔍 Entity extraction from documents (LLM, parallel with progress tracking); "Process Document" runs extraction, then relationship extraction; UI shows **Entities & Relationships** (nodes and edges) in one section
+- 🔗 Relationship extraction (auto-triggered after entities); constrained to extracted entities only; graph-ready output (nodes + edges)
+- 📦 Redis cache (documents, extraction jobs, relationship jobs); in-memory fallback when Redis is not set
 - 🚀 FastAPI backend with modular architecture
 - 🎨 Streamlit frontend with component-based design
 - 🐳 Docker Compose orchestration (backend, frontend, Redis)
@@ -50,10 +51,12 @@ Ship-of-Theseus/
 │   │   ├── models/              # Database models (empty - ready for expansion)
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   ├── auth.py
-│   │   │   └── entities.py
+│   │   │   ├── entities.py
+│   │   │   └── relationships.py
 │   │   ├── services/            # Business logic
 │   │   │   ├── user_service.py
-│   │   │   └── entity_extraction_service.py
+│   │   │   ├── entity_extraction_service.py
+│   │   │   └── relationship_extraction_service.py
 │   │   └── db/                  # Database connection (empty - ready for expansion)
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -138,6 +141,8 @@ See `.env.example` for all available configuration options.
 - `OPENAI_API_KEY` - Required for entity extraction; if unset, extraction endpoints return 503.
 - `ENTITY_EXTRACTION_MODEL` - LLM model for extraction (default: `gpt-4o-mini`)
 - `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel (default: `5`)
+- `RELATIONSHIP_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel for relationship extraction (default: `5`)
+- `AUTO_EXTRACT_RELATIONSHIPS` - Auto-trigger relationship extraction after entity extraction (default: `true`)
 
 ## 🏃 Running Locally (Development)
 
@@ -190,15 +195,21 @@ pytest --cov=app --cov-report=html
 - `DELETE /documents/current` - Clear stored document (requires auth)
 
 ### Entity Extraction Endpoints (parallel, progress via Redis)
-- `POST /entities/extract` - Start entity extraction on current document; returns `job_id` (requires auth)
+- `POST /entities/extract` - Start entity extraction on current document; returns `job_id` (requires auth). When complete, relationship extraction is auto-started with job_id `{job_id}_rel`.
 - `GET /entities/extract/status/{job_id}` - Get extraction progress: status, `completed_chunks`/`total_chunks` (requires auth)
 - `GET /entities/extract/result/{job_id}` - Get extraction result when completed (requires auth; 202 if still running)
+
+### Relationship Extraction Endpoints (graph-ready: nodes + edges)
+- `GET /entities/extract/relationships/status/{job_id}` - Get relationship extraction progress (use `{entity_job_id}_rel` as job_id) (requires auth)
+- `GET /entities/extract/relationships/result/{job_id}` - Get graph result (nodes + edges) when relationship extraction completed (requires auth; 202 if still running)
+- `GET /entities/extract/graph/{job_id}` - Get complete graph for an entity job (uses entity job_id; returns graph when relationship extraction has completed) (requires auth)
 
 ## 🐳 Docker and Redis
 
 With Docker Compose, the backend uses **Redis** for caching:
 - **Documents**: Stored under `documents:{user_id}` (TTL 24h)
 - **Extraction jobs**: Status and result under `extraction:job:{job_id}` (TTL 1h)
+- **Relationship jobs**: Status and graph result under `extraction:relationships:job:{job_id}` (TTL 1h)
 
 Redis runs as a service `redis`; the backend gets `REDIS_URL=redis://redis:6379/0` automatically. For local runs without Docker, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
 
