@@ -8,12 +8,25 @@ As I build this project you can have bellow the overview of the features that ar
 
 ![Graph RAG flowchart: indexing and query phases](assets/BOARD.png)
 
+
 The project follows a **Graph RAG** (Graph Retrieval-Augmented Generation) design:
 
 - **Indexing phase:** Source documents are chunked (e.g. with a recursive text splitter), then an LLM extracts entities and relationships to build a knowledge graph. Community detection and a hierarchical structure (Root / Low / High levels) organize the graph; an LLM generates community summaries, which are embedded and stored in a vector database.
 - **Query phase:** A user query selects a community level, retrieves relevant community summaries from the vector database, and combines them into a final response.
 
 LLMs drive extraction, community detection, hierarchy building, and summary generation; the vector store holds the community summaries for retrieval.
+### Example: Knowledge Graph Visualization
+
+![Example of the knowledge graph extracted from one document](assets/graph_exmp.png)
+
+**Legend:**
+
+- **Blue circles** – *Person* entities
+- **Green squares** – *Organization* entities
+- **Orange diamonds** – *Location* entities
+- **Purple hexagons** – *KeyTerm* or *Topic* nodes
+- **Arrows** – *Relationship* types (labeled edges) extracted by LLM
+- Each graph corresponds to a single document; nodes and relationships are isolated by document filename.
 
 ## Features
 
