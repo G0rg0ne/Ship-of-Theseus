@@ -19,12 +19,13 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 
 - 🔐 JWT-based authentication
 - 📄 PDF document upload and text extraction
-- 🔍 Entity extraction from documents (LLM, parallel with progress tracking); "Process Document" runs extraction, then relationship extraction; UI shows **Entities & Relationships** (nodes and edges) in one section
+- 🔍 Knowledge graph extraction only: "Process Document" runs entity then relationship extraction; UI shows **Entities & Relationships** (nodes and edges). If graph extraction fails or times out, the user sees "Couldn't extract the knowledge graph" with the specific error reason—no entity-only fallback.
 - 🔗 Relationship extraction (auto-triggered after entities); constrained to extracted entities only; graph-ready output (nodes + edges)
 - 📦 Redis cache (documents, extraction jobs, relationship jobs); in-memory fallback when Redis is not set
+- 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button in the UI saves the graph to Neo4j; graphs are isolated by document filename
 - 🚀 FastAPI backend with modular architecture
 - 🎨 Streamlit frontend with component-based design
-- 🐳 Docker Compose orchestration (backend, frontend, Redis)
+- 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
 - ✅ Ready for testing and extension
@@ -41,7 +42,8 @@ Ship-of-Theseus/
 │   │   │       ├── endpoints/   # API route handlers
 │   │   │       │   ├── auth.py
 │   │   │       │   ├── documents.py
-│   │   │       │   └── entities.py   # Entity extraction (parallel, progress)
+│   │   │       │   ├── entities.py   # Entity extraction (parallel, progress)
+│   │   │       │   └── graph.py     # Neo4j graph persistence (save/list/get/delete)
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
@@ -60,7 +62,8 @@ Ship-of-Theseus/
 │   │   ├── services/            # Business logic
 │   │   │   ├── user_service.py
 │   │   │   ├── entity_extraction_service.py
-│   │   │   └── relationship_extraction_service.py
+│   │   │   ├── relationship_extraction_service.py
+│   │   │   └── neo4j_service.py   # Neo4j graph persistence (save/get/list/delete)
 │   │   └── db/                  # Database connection (empty - ready for expansion)
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -125,11 +128,12 @@ Ship-of-Theseus/
 3. **Access the application**:
    - Frontend: http://localhost:8501
    - Backend API: http://localhost:8000
+   - Neo4j Browser (optional): http://localhost:7474 (Bolt: localhost:7687)
    - Health check: http://localhost:8000/
 
 ## ⚙️ Environment Variables
 
-See `.env.example` for all available configuration options.
+See `.env.example` (project root) or `backend/.env.example` for backend and Neo4j options.
 
 ### Required Variables (app will not start without these):
 - `SECRET_KEY` - JWT secret key (generate with `openssl rand -hex 32`) - **REQUIRED**
@@ -147,6 +151,11 @@ See `.env.example` for all available configuration options.
 - `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel (default: `5`)
 - `RELATIONSHIP_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel for relationship extraction (default: `5`)
 - `AUTO_EXTRACT_RELATIONSHIPS` - Auto-trigger relationship extraction after entity extraction (default: `true`)
+- **Neo4j** (optional; graph persistence disabled if unavailable):
+  - `NEO4J_URI` - Bolt URL. **IMPORTANT**: Use `bolt://neo4j:7687` when running in Docker (uses service name), or `bolt://localhost:7687` for local development
+  - `NEO4J_USER` - Neo4j username (default: `neo4j`; must match `docker-compose.yml`)
+  - `NEO4J_PASSWORD` - Neo4j password (default: `password123`; must match `docker-compose.yml`)
+  - `NEO4J_DATABASE` - Database name (default: `neo4j`)
 
 ## 🏃 Running Locally (Development)
 
@@ -208,14 +217,22 @@ pytest --cov=app --cov-report=html
 - `GET /entities/extract/relationships/result/{job_id}` - Get graph result (nodes + edges) when relationship extraction completed (requires auth; 202 if still running)
 - `GET /entities/extract/graph/{job_id}` - Get complete graph for an entity job (uses entity job_id; returns graph when relationship extraction has completed) (requires auth)
 
-## 🐳 Docker and Redis
+### Graph Persistence (Neo4j) Endpoints
+- `POST /graph/save/{job_id}` - Save extracted graph to Neo4j (uses entity job_id; requires auth)
+- `GET /graph/list` - List documents in Neo4j with node/edge counts (requires auth)
+- `GET /graph/{document_name}` - Get graph from Neo4j by document name (requires auth)
+- `DELETE /graph/{document_name}` - Delete document graph from Neo4j (requires auth)
+- `GET /graph/health` - Neo4j connectivity check (requires auth)
 
-With Docker Compose, the backend uses **Redis** for caching:
+## 🐳 Docker, Redis, and Neo4j
+
+With Docker Compose, the backend uses **Redis** for caching and **Neo4j** for persistent graph storage:
 - **Documents**: Stored under `documents:{user_id}` (TTL 24h)
 - **Extraction jobs**: Status and result under `extraction:job:{job_id}` (TTL 1h)
 - **Relationship jobs**: Status and graph result under `extraction:relationships:job:{job_id}` (TTL 1h)
 
-Redis runs as a service `redis`; the backend gets `REDIS_URL=redis://redis:6379/0` automatically. For local runs without Docker, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
+- **Redis** runs as service `redis`; the backend gets `REDIS_URL=redis://redis:6379/0` when using Docker. For local runs, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
+- **Neo4j** runs as service `neo4j` with persistent volume `neo4j_data`. **IMPORTANT**: Set `NEO4J_URI=bolt://neo4j:7687` in `.env` when using Docker (not `localhost`). The authentication credentials (`NEO4J_USER` and `NEO4J_PASSWORD`) must match those in `docker-compose.yml` (default: `neo4j/password123`). Each document's graph is stored separately (isolated by document filename). Use the "Add to Knowledge Base" button in the PDF section to save the extracted graph to Neo4j.
 
 ## 🐳 Docker Commands
 

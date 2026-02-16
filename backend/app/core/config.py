@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     RELATIONSHIP_EXTRACTION_BATCH_SIZE: int = 5
     AUTO_EXTRACT_RELATIONSHIPS: bool = True
 
+    # Neo4j graph database (persistent storage for extracted knowledge graphs)
+    NEO4J_URI: str = "bolt://localhost:7687"
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "password123"
+    NEO4J_DATABASE: str = "neo4j"
+
     class Config:
         case_sensitive = True
         env_file = ".env"

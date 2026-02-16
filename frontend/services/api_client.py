@@ -3,7 +3,7 @@ API client for communicating with the backend.
 """
 import os
 import requests
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Dict, Optional, List
 
 
 class APIClient:
@@ -286,4 +286,118 @@ class APIClient:
             return False, None, detail if isinstance(detail, str) else str(detail)
         except Exception as e:
             return False, None, str(e)
+
+    def save_graph_to_neo4j(
+        self, job_id: str, token: str
+    ) -> Tuple[bool, Optional[Dict], str]:
+        """
+        Save the extracted graph for the given job to Neo4j (knowledge base).
+
+        Args:
+            job_id: Entity extraction job ID
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, response_data with document_name, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.post(
+                f"{self.base_url}/api/graph/save/{job_id}",
+                headers=headers,
+                timeout=30,
+            )
+            if response.status_code == 200:
+                return True, response.json(), ""
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to save graph")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+
+    def get_graph_from_neo4j(
+        self, document_name: str, token: str
+    ) -> Tuple[bool, Optional[Dict], str]:
+        """
+        Get a document graph from Neo4j by document name.
+
+        Args:
+            document_name: Document filename as stored in Neo4j
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, graph_data, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.get(
+                f"{self.base_url}/api/graph/{document_name}",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return True, response.json(), ""
+            if response.status_code == 404:
+                return False, None, "Graph not found"
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to get graph")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+
+    def list_neo4j_documents(
+        self, token: str
+    ) -> Tuple[bool, Optional[List[Dict]], str]:
+        """
+        List all documents stored in Neo4j with node/edge counts.
+
+        Args:
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, list of {document_name, node_count, edge_count}, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.get(
+                f"{self.base_url}/api/graph/list",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return True, data.get("documents", []), ""
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to list documents")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+
+    def delete_graph_from_neo4j(
+        self, document_name: str, token: str
+    ) -> Tuple[bool, str]:
+        """
+        Delete a document graph from Neo4j.
+
+        Args:
+            document_name: Document filename as stored in Neo4j
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.delete(
+                f"{self.base_url}/api/graph/{document_name}",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return True, ""
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to delete graph")
+            return False, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, str(e)
 

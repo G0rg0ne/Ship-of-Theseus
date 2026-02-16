@@ -101,9 +101,15 @@ def render_pdf_section():
                 else:
                     st.session_state.current_pdf = data
                     st.session_state.last_processed_file = file_id
-                    # Clear previous extraction results for the new document
+                    # Clear previous extraction results and errors for the new document
                     if "extraction_results" in st.session_state:
                         del st.session_state.extraction_results
+                    if "extraction_job_id" in st.session_state:
+                        del st.session_state.extraction_job_id
+                    if "graph_saved_to_kb" in st.session_state:
+                        del st.session_state.graph_saved_to_kb
+                    if "extraction_error" in st.session_state:
+                        del st.session_state.extraction_error
 
                     # Start entity extraction
                     success, job_id, error = api_client.start_entity_extraction(token)
@@ -115,11 +121,15 @@ def render_pdf_section():
                         status_placeholder = st.empty()
                         start_time = time.time()
                         extraction_ok = False
+                        extraction_error_reason = None
+                        if "extraction_error" in st.session_state:
+                            del st.session_state.extraction_error
                         while (time.time() - start_time) < EXTRACTION_TIMEOUT_SEC:
                             success, status_data, error = api_client.get_extraction_status(
                                 job_id, token
                             )
                             if not success:
+                                extraction_error_reason = error or "Status check failed"
                                 status_placeholder.error(f"Status check failed: {error}")
                                 break
                             completed = status_data.get("completed_chunks", 0)
@@ -137,78 +147,39 @@ def render_pdf_section():
                                     )
                                     if success and graph_data:
                                         st.session_state.extraction_results = graph_data
+                                        st.session_state.extraction_job_id = job_id
                                         extraction_ok = True
                                         progress_bar.progress(1.0)
                                         status_placeholder.caption(
                                             "Entities and relationships ready."
                                         )
                                         break
-                                    rel_detail = (
-                                        getattr(error, "detail", None)
-                                        if hasattr(error, "detail")
-                                        else error
-                                    )
+                                    if not success and error and error != "Graph not ready":
+                                        extraction_error_reason = error
+                                        break
                                     status_placeholder.caption(
                                         "Extracting relationships..."
                                     )
                                     progress_bar.progress(0.4 + 0.6 * 0.5)
                                     time.sleep(EXTRACTION_POLL_INTERVAL_SEC)
-                                if not extraction_ok:
-                                    # Fallback: try entity-only result if graph never ready
-                                    success, result_data, _ = api_client.get_extraction_result(
-                                        job_id, token
+                                if not extraction_ok and extraction_error_reason is None:
+                                    extraction_error_reason = (
+                                        "Graph extraction timed out after waiting for relationship extraction."
                                     )
-                                    if success and result_data:
-                                        # Build minimal graph from entities for display
-                                        nodes = []
-                                        seen = set()
-                                        for chunk in result_data.get("chunk_entities") or []:
-                                            for p in chunk.get("people") or []:
-                                                name = (p.get("name") or "").strip()
-                                                if name and name not in seen:
-                                                    seen.add(name)
-                                                    nodes.append({
-                                                        "id": f"n_{len(nodes)}",
-                                                        "label": name,
-                                                        "type": "person",
-                                                        "properties": {k: v for k, v in p.items() if k != "name" and v},
-                                                    })
-                                            for o in chunk.get("organizations") or []:
-                                                name = (o.get("name") or "").strip()
-                                                if name and name not in seen:
-                                                    seen.add(name)
-                                                    nodes.append({
-                                                        "id": f"n_{len(nodes)}",
-                                                        "label": name,
-                                                        "type": "organization",
-                                                        "properties": {k: v for k, v in o.items() if k != "name" and v},
-                                                    })
-                                            for loc in chunk.get("locations") or []:
-                                                name = (str(loc) or "").strip()
-                                                if name and name not in seen:
-                                                    seen.add(name)
-                                                    nodes.append({"id": f"n_{len(nodes)}", "label": name, "type": "location", "properties": {}})
-                                            for term in chunk.get("key_terms") or []:
-                                                name = (str(term) or "").strip()
-                                                if name and name not in seen:
-                                                    seen.add(name)
-                                                    nodes.append({"id": f"n_{len(nodes)}", "label": name, "type": "key_term", "properties": {}})
-                                        st.session_state.extraction_results = {
-                                            "nodes": nodes,
-                                            "edges": [],
-                                            "filename": result_data.get("filename", ""),
-                                            "entity_count": len(nodes),
-                                            "relationship_count": 0,
-                                        }
-                                        extraction_ok = True
                                 break  # exit outer poll loop when entity extraction completed
                             if status == "failed":
+                                extraction_error_reason = status_data.get(
+                                    "error", "Unknown error"
+                                )
                                 status_placeholder.error(
-                                    f"❌ Extraction failed: {status_data.get('error', 'Unknown error')}"
+                                    f"❌ Extraction failed: {extraction_error_reason}"
                                 )
                                 break
                             time.sleep(EXTRACTION_POLL_INTERVAL_SEC)
                         else:
+                            extraction_error_reason = (
+                                "Extraction timed out."
+                            )
                             status_placeholder.error(
                                 "⏱️ Extraction timed out. You can check status later."
                             )
@@ -217,6 +188,11 @@ def render_pdf_section():
                         if extraction_ok:
                             st.success(
                                 f"✅ Successfully processed **{data.get('filename', uploaded_file.name)}**"
+                            )
+                        else:
+                            st.session_state.extraction_error = (
+                                "Couldn't extract the knowledge graph. "
+                                + (extraction_error_reason or "Unknown error.")
                             )
                         st.session_state.uploader_key += 1
                         st.rerun()
@@ -241,9 +217,28 @@ def render_pdf_section():
         else:
             st.caption("No text could be extracted from this PDF.")
 
+        # Show error when graph extraction failed (no fallback to entity-only)
+        if "extraction_error" in st.session_state:
+            st.error(st.session_state.extraction_error)
         # Entities and relationships section (graph: nodes + edges)
-        if "extraction_results" in st.session_state:
+        elif "extraction_results" in st.session_state:
             _render_entities_with_relationships_section(st.session_state.extraction_results)
+            # Save to Knowledge Base (Neo4j) — only when graph is ready and we have job_id
+            job_id = st.session_state.get("extraction_job_id")
+            saved_to_kb = st.session_state.get("graph_saved_to_kb", False)
+            if job_id:
+                if saved_to_kb:
+                    st.success("✅ Graph saved to Knowledge Base")
+                else:
+                    if st.button("Add to Knowledge Base", key="save_to_neo4j", help="Save this graph to the persistent Neo4j database"):
+                        with st.spinner("Saving graph to Knowledge Base..."):
+                            success, save_data, error = api_client.save_graph_to_neo4j(job_id, token)
+                        if success:
+                            st.session_state.graph_saved_to_kb = True
+                            st.success(f"✅ Graph saved to Knowledge Base as **{save_data.get('document_name', filename)}**")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {error or 'Failed to save graph.'}")
 
         if st.button("Clear document", key="clear_pdf"):
             success, error = api_client.clear_current_document(token)
@@ -254,6 +249,12 @@ def render_pdf_section():
                     del st.session_state.last_processed_file
                 if "extraction_results" in st.session_state:
                     del st.session_state.extraction_results
+                if "extraction_job_id" in st.session_state:
+                    del st.session_state.extraction_job_id
+                if "graph_saved_to_kb" in st.session_state:
+                    del st.session_state.graph_saved_to_kb
+                if "extraction_error" in st.session_state:
+                    del st.session_state.extraction_error
                 # Increment uploader key to reset the file uploader
                 st.session_state.uploader_key += 1
                 st.rerun()

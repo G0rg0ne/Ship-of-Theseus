@@ -6,6 +6,64 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-16] - FEATURE (Neo4j graph persistence)
+
+### Changes
+- **Neo4j integration**: Extracted knowledge graphs can be persisted to a Neo4j graph database. Each document's graph is stored separately and isolated by document filename.
+- **Docker**: Added Neo4j 5.15 community service to `docker-compose.yml` with ports 7474 (HTTP) and 7687 (Bolt), persistent volume `neo4j_data`, and health check. Backend depends on Neo4j being healthy.
+- **Backend**: New `Neo4jService` in `backend/app/services/neo4j_service.py` with `save_document_graph`, `get_document_graph`, `list_documents`, `delete_document_graph`, and `health_check`. Nodes use entity-type labels (Person, Organization, Location, KeyTerm) and `document_name` property; relationships use `RELATES` with `type` and `document_name`.
+- **API**: New graph router at `/api/graph`: `POST /graph/save/{job_id}` (save extraction result to Neo4j), `GET /graph/list`, `GET /graph/{document_name}`, `DELETE /graph/{document_name}`, `GET /graph/health`. All require authentication.
+- **Frontend**: "Add to Knowledge Base" button in the PDF section; shown when extraction is complete; calls `save_graph_to_neo4j(job_id)`; shows success message or error. API client methods: `save_graph_to_neo4j`, `get_graph_from_neo4j`, `list_neo4j_documents`, `delete_graph_from_neo4j`.
+- **Config**: `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` in `backend/app/core/config.py`. Created `backend/.env.example` with Neo4j and other backend variables.
+
+### Files Modified
+- `docker-compose.yml` – Added neo4j service, neo4j_data volume, backend depends_on neo4j
+- `backend/requirements.txt` – Added neo4j>=5.15.0
+- `backend/app/core/config.py` – Added NEO4J_* settings
+- `backend/app/main.py` – Registered graph router; startup/shutdown Neo4j lifecycle (app.state.neo4j_service)
+- `backend/app/services/neo4j_service.py` – Created
+- `backend/app/api/v1/endpoints/graph.py` – Created
+- `frontend/services/api_client.py` – Added Neo4j methods
+- `frontend/components/pdf_section.py` – Store extraction_job_id; "Add to Knowledge Base" button; graph_saved_to_kb state; clear KB state on clear document and on new process
+- `backend/.env.example` – Created
+- `README.md` – Neo4j feature, project structure, env vars, API endpoints, Docker/Neo4j section
+- `DEVELOPMENT.md` – This entry
+
+### Rationale
+- Users need to persist extracted graphs for later use; Redis cache is short-lived (1h TTL). Neo4j provides persistent graph storage. Document isolation by filename allows future fusion of graphs to be handled separately.
+
+### Breaking Changes
+None. Neo4j is optional; if unavailable, graph persistence endpoints return 503 and the UI button still works but save will fail with a clear error.
+
+### Next Steps
+- Optional: Knowledge Base page to list/visualize/delete saved graphs.
+- Future: Separate process for merging/fusing multiple document graphs.
+
+---
+
+## [2026-02-16] - REFACTOR (Frontend)
+
+### Changes
+- **Removed entity-only fallback**: When relationship extraction fails or times out, the app no longer shows a minimal graph (nodes only, no edges). The app is used exclusively for knowledge graph extraction, so partial results are not shown.
+- **Explicit error messaging**: If graph extraction fails, the user sees "Couldn't extract the knowledge graph." plus the specific reason (backend error, timeout, job expired, status check failure).
+- **Error tracking**: `extraction_error_reason` captures failure causes during polling; `st.session_state.extraction_error` persists the message after rerun. Error is cleared when starting a new process or clearing the document.
+- **Display**: When `extraction_error` is set, the PDF section shows only the error (no Entities & Relationships section). Graph results are shown only when extraction succeeds.
+
+### Files Modified
+- `frontend/components/pdf_section.py` – Removed fallback block that built minimal graph from entity-only result; added extraction_error_reason and extraction_error; display extraction_error in document section; clear extraction_error on clear document and on new process.
+
+### Rationale
+- App is for knowledge graph extraction only; entity-only output is not useful.
+- Users should see a clear failure message and reason instead of misleading partial data.
+
+### Breaking Changes
+- If graph extraction previously failed, users used to see entities without relationships. They now see an error message and no graph output.
+
+### Next Steps
+- None.
+
+---
+
 ## [2026-02-16] - REFACTOR
 
 ### Changes
@@ -374,6 +432,36 @@ None - this is organizational restructuring
 - Continue development following the new cursor rules structure
 - Update DEVELOPMENT.md after each significant change
 - Keep README.md in sync with project changes
+
+---
+
+## [2026-02-16 18:50] - BUGFIX
+
+### Changes
+- Fixed Neo4j connectivity issue in Docker environment
+- Updated `.env.example` with correct Neo4j configuration for Docker
+- Clarified Neo4j connection URI documentation in README.md
+- Added emphasis on using service name `neo4j` instead of `localhost` when running in Docker
+
+### Files Modified
+- `.env.example` - Created with proper Neo4j Docker configuration
+- `README.md` - Enhanced Neo4j environment variable documentation with Docker-specific notes
+
+### Rationale
+The backend container was trying to connect to Neo4j at `bolt://localhost:7687`, which failed because in Docker's internal network, the backend must use the service name `bolt://neo4j:7687` (from docker-compose.yml). This caused:
+- Neo4j health check failures on startup
+- 503 Service Unavailable errors when trying to save graphs
+- Authentication failures logged by Neo4j container
+
+The fix ensures proper service-to-service communication within Docker's network by using the correct service name in the connection URI.
+
+### Breaking Changes
+None - only affects configuration. Existing users need to update their `.env` file with `NEO4J_URI=bolt://neo4j:7687` and restart backend container.
+
+### Next Steps
+- Users should update their `.env` file with the correct `NEO4J_URI=bolt://neo4j:7687`
+- Restart backend container with `docker-compose restart backend`
+- Verify Neo4j connectivity with `GET /api/graph/health` endpoint
 
 ---
 
