@@ -6,6 +6,36 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-16] - REFACTOR
+
+### Changes
+- **Prompt management system**: Extracted hardcoded LLM prompts from services into JSON files and added a centralized PromptManager utility.
+- **New directory**: `backend/app/prompts/` with `entity_extraction.json` and `relationship_extraction.json` (name, description, version, template, input_variables, metadata).
+- **New module**: `backend/app/core/prompt_manager.py` – loads prompts from JSON, validates required fields, caches in memory; methods: `get_prompt(name)`, `get_template(name)`, `reload_prompt(name)`, `clear_cache()`.
+- **Services updated**: `EntityExtractionService` and `RelationshipExtractionService` now use `PromptManager.get_prompt(...)` instead of inline template strings.
+
+### Files Modified
+- `backend/app/prompts/entity_extraction.json` – Created
+- `backend/app/prompts/relationship_extraction.json` – Created
+- `backend/app/core/prompt_manager.py` – Created
+- `backend/app/services/entity_extraction_service.py` – Use PromptManager
+- `backend/app/services/relationship_extraction_service.py` – Use PromptManager
+- `README.md` – Project structure (prompts/, prompt_manager.py), new "Prompt Management" section
+- `DEVELOPMENT.md` – This entry
+
+### Rationale
+- Prompts can be edited without touching Python code; better for iteration and non-developers.
+- Single place to load and validate prompts; caching avoids repeated file I/O.
+- Version and metadata in JSON support future prompt versioning or A/B testing.
+
+### Breaking Changes
+None. Behavior unchanged; prompts are loaded from files with same content as before.
+
+### Next Steps
+- None.
+
+---
+
 ## [2026-02-16] - FEATURE
 
 ### Changes

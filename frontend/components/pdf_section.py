@@ -6,7 +6,7 @@ import streamlit as st
 from services.api_client import APIClient
 
 EXTRACTION_POLL_INTERVAL_SEC = 2
-EXTRACTION_TIMEOUT_SEC = 300  # 5 minutes
+EXTRACTION_TIMEOUT_SEC = 600  # 10 minutes
 
 
 def _render_entities_with_relationships_section(graph_data: dict) -> None:

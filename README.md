@@ -46,8 +46,12 @@ Ship-of-Theseus/
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
 │   │   │   ├── cache.py        # Redis cache manager
+│   │   │   ├── prompt_manager.py  # LLM prompt loader (JSON, cached)
 │   │   │   ├── security.py     # JWT & password utilities
 │   │   │   └── logger.py        # Loguru logging configuration
+│   │   ├── prompts/             # LLM prompt templates (JSON)
+│   │   │   ├── entity_extraction.json
+│   │   │   └── relationship_extraction.json
 │   │   ├── models/              # Database models (empty - ready for expansion)
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   ├── auth.py
@@ -283,6 +287,15 @@ logger.success("Operation completed")
 - Debug level logging in files, INFO level in console
 
 See [.cursor/rules/README.mdc](.cursor/rules/README.mdc) for detailed development guidelines and project standards.
+
+### Prompt Management
+
+LLM prompts for entity and relationship extraction are stored as JSON files in `backend/app/prompts/`. The **PromptManager** (`app.core.prompt_manager`) loads and caches these prompts so you can edit prompt text without changing Python code.
+
+- **Location**: `backend/app/prompts/*.json`
+- **Format**: Each file has `name`, `description`, `version`, `template`, `input_variables`, and optional `metadata`.
+- **Usage**: Services call `PromptManager.get_prompt("entity_extraction")` or `PromptManager.get_prompt("relationship_extraction")` to get the template and input variables.
+- **Customization**: Edit the JSON files to change prompt wording; the app uses cached copies until restarted (or call `PromptManager.reload_prompt(name)` / `PromptManager.clear_cache()` to refresh).
 
 ## License
 

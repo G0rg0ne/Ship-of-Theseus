@@ -15,6 +15,7 @@ from langchain.prompts import PromptTemplate
 
 from app.core.config import settings
 from app.core.logger import logger
+from app.core.prompt_manager import PromptManager
 from app.core.cache import (
     cache_get,
     cache_set,
@@ -47,24 +48,10 @@ class RelationshipExtractionService:
             openai_api_key=api_key,
         )
         self.parser = PydanticOutputParser(pydantic_object=ExtractedRelationships)
+        prompt_data = PromptManager.get_prompt("relationship_extraction")
         self.prompt = PromptTemplate(
-            template="""Extract relationships between entities from the text.
-
-CRITICAL CONSTRAINT: You MUST ONLY create relationships between the entities provided in the list below.
-Do NOT introduce new entities. Source and Target must EXACTLY match entity names from the list.
-
-Available Entities:
-{entity_list}
-
-Text:
-{text}
-
-Extract relationships as triplets: (Source Entity, Relation Type, Target Entity).
-Only use entities from the provided list above. Use short relation types (e.g., works_for, located_in, founded_by).
-
-{format_instructions}
-""",
-            input_variables=["entity_list", "text"],
+            template=prompt_data["template"],
+            input_variables=prompt_data["input_variables"],
             partial_variables={
                 "format_instructions": self.parser.get_format_instructions()
             },

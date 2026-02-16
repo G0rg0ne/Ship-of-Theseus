@@ -1,0 +1,11 @@
+{
+  "name": "entity_extraction",
+  "description": "Extract structured entities from text chunks",
+  "version": "1.0",
+  "template": "Extract structured entities from the following text.\n\n{format_instructions}\n\nText:\n{text}",
+  "input_variables": ["text"],
+  "metadata": {
+    "model_suggested": "gpt-4",
+    "temperature": 0
+  }
+}

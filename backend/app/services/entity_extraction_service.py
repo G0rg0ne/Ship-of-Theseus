@@ -12,6 +12,7 @@ from langchain.prompts import PromptTemplate
 
 from app.core.config import settings
 from app.core.logger import logger
+from app.core.prompt_manager import PromptManager
 from app.core.cache import (
     cache_get,
     cache_set,
@@ -31,15 +32,10 @@ class EntityExtractionService:
             openai_api_key=api_key,
         )
         self.parser = PydanticOutputParser(pydantic_object=ExtractedEntities)
+        prompt_data = PromptManager.get_prompt("entity_extraction")
         self.prompt = PromptTemplate(
-            template="""Extract structured entities from the following text.
-
-            {format_instructions}
-
-            Text:
-            {text}
-            """,
-            input_variables=["text"],
+            template=prompt_data["template"],
+            input_variables=prompt_data["input_variables"],
             partial_variables={
                 "format_instructions": self.parser.get_format_instructions()
             },

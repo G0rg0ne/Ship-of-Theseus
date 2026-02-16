@@ -1,0 +1,11 @@
+{
+  "name": "relationship_extraction",
+  "description": "Extract relationships between pre-identified entities",
+  "version": "1.0",
+  "template": "Extract relationships between entities from the text.\n\nCRITICAL CONSTRAINT: You MUST ONLY create relationships between the entities provided in the list below.\nDo NOT introduce new entities. Source and Target must EXACTLY match entity names from the list.\n\nAvailable Entities:\n{entity_list}\n\nText:\n{text}\n\nExtract relationships as triplets: (Source Entity, Relation Type, Target Entity).\nOnly use entities from the provided list above. Use short relation types (e.g., works_for, located_in, founded_by).\n\n{format_instructions}",
+  "input_variables": ["entity_list", "text"],
+  "metadata": {
+    "model_suggested": "gpt-4",
+    "temperature": 0
+  }
+}
