@@ -115,3 +115,5 @@ deploy.sh.bak
 CLAUDE.md
 
 .cursor/plans/*
+
+neo4j_data/*
