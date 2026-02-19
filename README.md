@@ -32,12 +32,14 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 
 - 🔐 JWT-based authentication
 - 📄 PDF document upload and text extraction
-- 🔍 Knowledge graph extraction only: "Process Document" runs entity then relationship extraction; UI shows **Entities & Relationships** (nodes and edges). If graph extraction fails or times out, the user sees "Couldn't extract the knowledge graph" with the specific error reason—no entity-only fallback.
+- 🔍 Knowledge graph extraction only: "Process Document" runs entity then relationship extraction; UI shows the result as **entity → relationship → entity** cards (color-coded by entity type, no raw document text). If graph extraction fails or times out, the user sees "Couldn't extract the knowledge graph" with the specific error reason and a **Try again** option—no entity-only fallback.
+- **Graph explorer**: Search (entity/relationship/context), filter by entity type and relationship type, sort by source or relationship type; relationship context in expanders; **Entities** tab with type badges and counts; **Download graph JSON**.
+- **Knowledge Base browser**: Collapsible "Knowledge Base — browse saved graphs" section: list saved documents, select and load a graph, view it in the same explorer (no backend changes).
 - 🔗 Relationship extraction (auto-triggered after entities); constrained to extracted entities only; graph-ready output (nodes + edges)
 - 📦 Redis cache (documents, extraction jobs, relationship jobs); in-memory fallback when Redis is not set
 - 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button in the UI saves the graph to Neo4j; graphs are isolated by document filename
 - 🚀 FastAPI backend with modular architecture
-- 🎨 Streamlit frontend with component-based design
+- 🎨 Streamlit 1.41+ frontend: wide responsive layout (~1100px), stable upload/processing states with step feedback, clear-document confirmation; component-based design
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
@@ -279,7 +281,7 @@ docker-compose down -v
 The project follows a modular architecture:
 
 - **Backend**: FastAPI with clean separation of concerns (routes, services, schemas, core)
-- **Frontend**: Streamlit with component-based design
+- **Frontend**: Streamlit 1.41+ with wide layout, upload/processing state machine, knowledge-graph explorer (search/filters/sort, context in expanders, Entities tab, JSON download), optional Knowledge Base browser for saved graphs
 - **Shared**: Common utilities that can be used by both services
 - **Tests**: Comprehensive test coverage for both services
 - **Logging**: Loguru-based logging with automatic rotation, compression, and colored console output
