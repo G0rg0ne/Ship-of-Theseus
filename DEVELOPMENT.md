@@ -6,6 +6,85 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-19] - FEATURE (Streamlit UX refresh)
+
+### Changes
+- **Layout**: Switched from centered narrow (640px) to **wide** responsive layout; max-width ~1100px, improved vertical rhythm and spacing; button styling aligned so `use_container_width` works.
+- **Header**: Refined authenticated header (title, tagline, user chip, secondary logout); added collapsible "What happens next?" expander. Login form: clearer title/subtitle ("Sign in", caption).
+- **Upload and processing**: Upload section as single card with file name/size; **stable session-state flow**: `processing_state` (idle | uploading | extracting_entities | extracting_relationships | done | error), `processing_job_id`, `processing_progress`. Process button only when idle; after starting job, rerun to show **st.status()** with step-by-step progress until done. "Try again" on extraction error (resets state, increments uploader key). **Clear document**: moved into expander with confirmation checkbox "I want to clear the current document" then secondary Clear button.
+- **Knowledge graph explorer**: Toolbar above cards: **Search** (entity labels, relationship type, context), **Entity type** and **Relationship type** multiselect filters, **Sort by** (Original, Source entity, Relationship type). Relationship context moved into per-card **Context** expanders. **Relationships** and **Entities** tabs; Entities tab shows type badges with counts and search. **Download graph JSON** button. Keys support multiple instances (e.g. Knowledge Base viewer) via `key_prefix`.
+- **Knowledge Base browser**: Collapsible expander "Knowledge Base — browse saved graphs": list saved documents via `list_neo4j_documents`, select document, "Load graph" loads via `get_graph_from_neo4j` and renders in same explorer with `key_prefix="kb"`. No backend changes.
+
+### Files Modified
+- `frontend/app.py` – `layout="wide"`, CSS max-width 1100px, vertical rhythm, button min-width only
+- `frontend/components/welcome_page.py` – header columns, user chip, logout type="secondary", "What happens next?" expander
+- `frontend/components/login_form.py` – "Sign in" header, caption subtitle
+- `frontend/components/pdf_section.py` – processing state machine, upload card, st.status() polling, Try again, clear-document expander + confirm; _render_knowledge_graph_section refactor (toolbar, filters, sort, context expanders, Entities tab, JSON download, key_prefix); _render_entities_tab(); Knowledge Base expander with list/load/view
+- `README.md` – Features (graph explorer, KB browser, layout/processing/clear-document); Development frontend line
+- `DEVELOPMENT.md` – this entry
+
+### Rationale
+- Plan: improve UX with wider layout, stable processing feedback, easier graph exploration (search/filter/sort), optional KB browser; cards-only (no new graph-viz dependency).
+
+### Breaking Changes
+None. Session state extended with processing_*, kb_loaded_*; existing flows unchanged.
+
+### Next Steps
+- None.
+
+---
+
+## [2026-02-19 19:05] - BUGFIX
+
+### Changes
+- Fixed Streamlit runtime error in Knowledge Base viewer: removed nested expander usage by switching the outer Knowledge Base container from an expander to a toggle-controlled section (graph explorer contains expanders for Context and Entities).
+
+### Files Modified
+- `frontend/components/pdf_section.py`
+- `DEVELOPMENT.md`
+
+### Rationale
+Streamlit does not allow expanders nested inside other expanders.
+
+### Breaking Changes
+None.
+
+### Next Steps
+- None.
+
+---
+
+## [2026-02-19] - FEATURE (UI modernization)
+
+### Changes
+- **Streamlit upgrade**: Bumped frontend from Streamlit 1.28.1 to 1.41.1 for latest features and performance.
+- **Theme**: Updated `.streamlit/config.toml` with modern color palette (primary #4285F4, improved contrast backgrounds).
+- **Knowledge graph display**: Replaced entity/relationship lists with a card-based **entity → relationship → entity** view. Each relationship is shown in a single card with color-coded entities (Person blue, Organization green, Location orange, Key Term purple, Other gray) and optional context. Summary metrics (entity count, relationship count) shown above the cards.
+- **Document content removed**: Removed the "View extracted text" expander and raw PDF content display; UI now shows only the document filename and the extracted knowledge graph for cleaner UX.
+- **Welcome page**: Header layout with title + caption and user/logout in a column layout; streamlined logout button.
+- **CSS**: Added modern styling in `app.py` for knowledge graph cards (`.kg-card`, `.kg-entity`, `.kg-rel`, `.kg-context`), button hover effects, layout spacing, and file uploader appearance. Page title set to "Ship of Theseus" with wide layout.
+
+### Files Modified
+- `frontend/requirements.txt` – streamlit==1.41.1
+- `frontend/.streamlit/config.toml` – theme colors
+- `frontend/components/pdf_section.py` – `_render_knowledge_graph_section()` with entity-style map and card HTML; removed content display block; call `_render_knowledge_graph_section` instead of `_render_entities_with_relationships_section`
+- `frontend/app.py` – page config (title, icon, wide layout); expanded custom CSS
+- `frontend/components/welcome_page.py` – header columns, caption, logout in header
+- `README.md` – feature description and Streamlit version
+- `DEVELOPMENT.md` – this entry
+
+### Rationale
+- User request for modern Streamlit UI, result-only display (entity = relationship = entity), and removal of document content section for better UX.
+- Color-coded cards make entity types and relationships easy to scan.
+
+### Breaking Changes
+None. Existing API and session state unchanged; only frontend presentation changed.
+
+### Next Steps
+- None.
+
+---
+
 ## [2026-02-16] - FEATURE (Neo4j graph persistence)
 
 ### Changes
