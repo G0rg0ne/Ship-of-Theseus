@@ -7,23 +7,86 @@ from services.api_client import APIClient
 from components.login_form import render_login_form
 from components.welcome_page import render_welcome_page
 
-# Page configuration
+# Page configuration: wide layout for more room; content constrained via CSS
 st.set_page_config(
-    page_title="Authentication App",
-    page_icon="🔐",
-    layout="centered",
+    page_title="Ship of Theseus",
+    page_icon="⚓",
+    layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for better UI
+# Responsive layout: wider content area with comfortable reading width
 st.markdown("""
     <style>
-    .main {
-        padding-top: 2rem;
+    /* Wide responsive layout */
+    .main .block-container {
+        max-width: 1100px;
+        padding: 2rem 2rem 3rem;
+        margin-left: auto;
+        margin-right: auto;
     }
-    .stButton>button {
-        width: 100%;
-        border-radius: 5px;
+    .main {
+        padding: 2rem 1.5rem 3rem;
+    }
+    /* Buttons: consistent styling; use_container_width still works */
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 500;
+        min-width: 8rem;
+    }
+    .stButton > button:hover {
+        box-shadow: 0 2px 8px rgba(66, 133, 244, 0.25);
+    }
+    /* Knowledge graph cards */
+    .kg-card {
+        background: var(--secondary-background-color, #161b22);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem 0.75rem;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .kg-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        border-color: rgba(66, 133, 244, 0.3);
+    }
+    .kg-entity {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+    .kg-arrow {
+        color: rgba(255,255,255,0.5);
+        font-size: 1.1rem;
+        font-weight: 300;
+    }
+    .kg-rel {
+        font-style: italic;
+        color: rgba(255,255,255,0.85);
+        font-size: 0.95rem;
+    }
+    .kg-context {
+        margin: 0.5rem 0 0 0;
+        padding-left: 0.25rem;
+        font-size: 0.85rem;
+        color: rgba(255,255,255,0.6);
+        font-style: italic;
+        border-left: 3px solid rgba(66, 133, 244, 0.5);
+    }
+    /* Headers and vertical rhythm */
+    h1, h2, h3 {
+        font-weight: 600;
+        letter-spacing: -0.02em;
+    }
+    h2 { margin-top: 1.5rem; }
+    h3 { margin-top: 1.25rem; }
+    /* File uploader area */
+    [data-testid="stFileUploader"] {
+        border-radius: 10px;
+        border: 1px dashed rgba(255,255,255,0.2);
     }
     </style>
 """, unsafe_allow_html=True)
