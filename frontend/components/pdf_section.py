@@ -28,9 +28,23 @@ ENTITY_STYLE = {
 }
 
 
+_TYPE_ALIASES: dict[str, str] = {
+    # Neo4j label round-trips: _type_to_label strips underscores, so restore them
+    "keyterm": "key_term",
+    "keyphrase": "key_term",
+    "key phrase": "key_term",
+    "entity": "other",
+}
+
+
 def _entity_icon_and_color(node_type: str) -> tuple[str, str]:
-    """Return (emoji, hex color) for an entity type."""
-    t = (node_type or "other").lower().replace(" ", "_")
+    """Return (emoji, hex color) for an entity type.
+
+    Normalises the type string so Neo4j label round-trips (e.g. 'keyterm' from
+    the stored label 'Keyterm') still resolve to the correct style entry.
+    """
+    t = (node_type or "other").strip().lower().replace(" ", "_").replace("-", "_")
+    t = _TYPE_ALIASES.get(t, t)
     return ENTITY_STYLE.get(t, ENTITY_STYLE["other"])
 
 
@@ -158,19 +172,24 @@ def _render_knowledge_graph_section(graph_data: dict, key_prefix: str = "") -> N
             src_label_esc = _escape_html(row["src_label"])
             tgt_label_esc = _escape_html(row["tgt_label"])
             rel_esc = _escape_html(row["rel"])
-            card_html = f"""
-            <div class="kg-card">
-                <span class="kg-entity" style="color: {src_color};">{src_icon} {src_label_esc}</span>
-                <span class="kg-arrow">→</span>
-                <span class="kg-rel">{rel_esc}</span>
-                <span class="kg-arrow">→</span>
-                <span class="kg-entity" style="color: {tgt_color};">{tgt_icon} {tgt_label_esc}</span>
-            </div>
-            """
+            context_esc = _escape_html(row["context"])
+            # Build as a compact single-line string: Streamlit's Markdown parser treats
+            # 4-space-indented lines as code blocks, so any newlines inside the HTML
+            # would cause inner divs to render as raw text instead of HTML.
+            context_part = f'<div class="kg-context">{context_esc}</div>' if context_esc else ""
+            card_html = (
+                f'<div class="kg-card">'
+                f'<div style="display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem 0.75rem;width:100%;">'
+                f'<span class="kg-entity" style="color:{src_color};">{src_icon} {src_label_esc}</span>'
+                f'<span class="kg-arrow">→</span>'
+                f'<span class="kg-rel">{rel_esc}</span>'
+                f'<span class="kg-arrow">→</span>'
+                f'<span class="kg-entity" style="color:{tgt_color};">{tgt_icon} {tgt_label_esc}</span>'
+                f'</div>'
+                f'{context_part}'
+                f'</div>'
+            )
             st.markdown(card_html, unsafe_allow_html=True)
-            if row["context"]:
-                with st.expander("Context"):
-                    st.caption(row["context"])
     with tab_ent:
         _render_entities_tab(nodes, key_suffix=f"{k}_tab")
     st.markdown("---")

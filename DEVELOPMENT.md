@@ -6,6 +6,30 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-21 12:30] - UI/Refactor (centered layout + header account controls)
+
+### Changes
+- **Layout**: Switched from `layout="wide"` to `layout="centered"` in `st.set_page_config` — the correct Streamlit-native way to keep content compact and centered. Added `max-width: 860px !important` and `!important` on padding to ensure the block-container is consistently constrained. Removed wide-layout CSS hacks and unnecessary `.main` padding override.
+- **Header**: Completely removed nested sub-columns from the account area. Account section now uses a single HTML `<div>` with flexbox to right-align an `Admin` badge pill + username label together in one clean row, with the `Log out` button immediately below at full column width (`use_container_width=True`). Outer header uses `[5, 2]` column split. Removed `min-width: 8rem` forced button width that was making the logout button oversized.
+
+### Files Modified
+- `frontend/app.py` – `layout="centered"`, `max-width: 860px !important`, removed `.main` padding rule, removed `min-width: 8rem` button style
+- `frontend/components/welcome_page.py` – header simplified to `[5, 2]` columns; account column uses single HTML pill (Admin + username) + Streamlit logout button; no nested columns
+- `README.md` – Features line updated to reflect centered layout and new header design
+- `DEVELOPMENT.md` – this entry
+
+### Rationale
+- User reported content still stretching across the full page despite previous 960px CSS attempt; `layout="wide"` prevents reliable CSS override. Switching to `layout="centered"` is the reliable Streamlit-native solution.
+- Nested sub-columns in the header caused visual fragmentation; replaced with an HTML flexbox row for a polished Admin+username chip.
+
+### Breaking Changes
+None. Auth and session behavior unchanged.
+
+### Next Steps
+- None.
+
+---
+
 ## [2026-02-19] - FEATURE (Streamlit UX refresh)
 
 ### Changes

@@ -39,7 +39,7 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 - 📦 Redis cache (documents, extraction jobs, relationship jobs); in-memory fallback when Redis is not set
 - 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button in the UI saves the graph to Neo4j; graphs are isolated by document filename
 - 🚀 FastAPI backend with modular architecture
-- 🎨 Streamlit 1.41+ frontend: wide responsive layout (~1100px), stable upload/processing states with step feedback, clear-document confirmation; component-based design
+- 🎨 Streamlit 1.41+ frontend: `layout="centered"` with 860px max-width container, header with right-aligned Admin badge + username + Log out, stable upload/processing states with step feedback, clear-document confirmation; component-based design
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure

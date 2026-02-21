@@ -7,32 +7,26 @@ from services.api_client import APIClient
 from components.login_form import render_login_form
 from components.welcome_page import render_welcome_page
 
-# Page configuration: wide layout for more room; content constrained via CSS
+# Page configuration: centered layout keeps content compact and centered naturally
 st.set_page_config(
     page_title="Ship of Theseus",
     page_icon="⚓",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-# Responsive layout: wider content area with comfortable reading width
+# Visual polish: card styles, button hover, file uploader, typography
 st.markdown("""
     <style>
-    /* Wide responsive layout */
+    /* Constrain and center the content column */
     .main .block-container {
-        max-width: 1100px;
-        padding: 2rem 2rem 3rem;
-        margin-left: auto;
-        margin-right: auto;
+        max-width: 860px !important;
+        padding: 2rem 2rem 3rem !important;
     }
-    .main {
-        padding: 2rem 1.5rem 3rem;
-    }
-    /* Buttons: consistent styling; use_container_width still works */
+    /* Buttons: consistent styling */
     .stButton > button {
         border-radius: 8px;
         font-weight: 500;
-        min-width: 8rem;
     }
     .stButton > button:hover {
         box-shadow: 0 2px 8px rgba(66, 133, 244, 0.25);
@@ -42,12 +36,11 @@ st.markdown("""
         background: var(--secondary-background-color, #161b22);
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 10px;
-        padding: 1rem 1.25rem;
-        margin-bottom: 0.75rem;
+        padding: 0.85rem 1.25rem;
+        margin-bottom: 0.6rem;
         display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 0.5rem 0.75rem;
+        flex-direction: column;
+        gap: 0;
         transition: box-shadow 0.2s ease, border-color 0.2s ease;
     }
     .kg-card:hover {
@@ -69,12 +62,15 @@ st.markdown("""
         font-size: 0.95rem;
     }
     .kg-context {
-        margin: 0.5rem 0 0 0;
-        padding-left: 0.25rem;
-        font-size: 0.85rem;
-        color: rgba(255,255,255,0.6);
+        width: 100%;
+        margin-top: 0.6rem;
+        padding-top: 0.5rem;
+        padding-left: 0.75rem;
+        font-size: 0.82rem;
+        color: rgba(255,255,255,0.55);
         font-style: italic;
-        border-left: 3px solid rgba(66, 133, 244, 0.5);
+        border-top: 1px solid rgba(255,255,255,0.07);
+        border-left: 3px solid rgba(66, 133, 244, 0.4);
     }
     /* Headers and vertical rhythm */
     h1, h2, h3 {

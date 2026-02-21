@@ -109,6 +109,7 @@ class Neo4jService:
                 props: Dict[str, Any] = {
                     "id": node.id,
                     "label": node.label,
+                    "entity_type": node.type,  # stored explicitly so round-trip is lossless
                     "document_name": doc_name,
                     "extracted_at": document_graph.extracted_at,
                 }
@@ -175,11 +176,16 @@ class Neo4jService:
                     label = n_props.pop("label", "")
                     n_props.pop("document_name", None)
                     extracted_at = n_props.pop("extracted_at", "") or extracted_at
+                    # Prefer stored entity_type property; fall back to Neo4j label
+                    stored_type = n_props.pop("entity_type", None)
                     if node_id and node_id not in nodes_by_id:
-                        entity_type = "entity"
-                        for lab in node_n.labels:
-                            entity_type = lab.lower()
-                            break
+                        if stored_type:
+                            entity_type = stored_type
+                        else:
+                            entity_type = "other"
+                            for lab in node_n.labels:
+                                entity_type = lab.lower()
+                                break
                         nodes_by_id[node_id] = GraphNode(
                             id=node_id,
                             label=label,

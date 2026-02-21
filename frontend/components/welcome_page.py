@@ -8,21 +8,46 @@ from components.pdf_section import render_pdf_section
 
 def render_welcome_page():
     """Render the welcome page for authenticated users."""
-    # Header: title + tagline on left; user chip and logout on right (logout less prominent)
-    col_title, col_spacer, col_user = st.columns([2, 1, 1])
+    username = "Unknown"
+    if st.session_state.get("user_info"):
+        username = st.session_state.user_info.get("username", "Unknown")
+
+    # Header row: branding left, account controls right (no nested columns)
+    col_title, col_account = st.columns([5, 2])
     with col_title:
         st.markdown("# ⚓ Ship of Theseus")
         st.caption("Extract knowledge graphs from your documents.")
-    with col_user:
-        if st.session_state.get("user_info"):
-            user_info = st.session_state.user_info
-            username = user_info.get("username", "Unknown")
-            st.markdown(
-                f'<span style="font-size:0.9rem; color: var(--text-color); opacity:0.9;">'
-                f"👤 {username}</span>",
-                unsafe_allow_html=True,
-            )
-        if st.button("Log out", key="logout_btn", type="secondary"):
+    with col_account:
+        st.markdown(
+            f"""
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                gap: 0.5rem;
+                padding-top: 0.75rem;
+                padding-bottom: 0.4rem;
+            ">
+                <span style="
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                    letter-spacing: 0.06em;
+                    text-transform: uppercase;
+                    color: #4285f4;
+                    background: rgba(66, 133, 244, 0.12);
+                    border: 1px solid rgba(66, 133, 244, 0.25);
+                    padding: 0.1rem 0.45rem;
+                    border-radius: 4px;
+                ">Admin</span>
+                <span style="
+                    font-size: 0.85rem;
+                    color: rgba(255,255,255,0.75);
+                ">{username}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("Log out", key="logout_btn", type="secondary", use_container_width=True):
             clear_session()
             st.rerun()
 
