@@ -303,47 +303,6 @@ docker-compose down
 docker-compose down -v
 ```
 
-### Checking the database and monitoring users (WSL)
-
-The **PostgreSQL** database for user accounts runs in the container `ship_postgres` and is exposed on **port 5432**. Data lives in the Docker named volume `postgres_data` (not a folder in the repo).
-
-**Option 1 – `psql` inside the container (from WSL):**
-
-```bash
-docker exec -it ship_postgres psql -U postgres -d shipoftheseus -c "\dt"
-docker exec -it ship_postgres psql -U postgres -d shipoftheseus -c "SELECT id, username, email, is_active, created_at FROM users ORDER BY created_at DESC;"
-```
-
-**Option 2 – `psql` from your WSL host (connect to localhost):**
-
-Ensure the stack is up (`docker compose up -d`). Then:
-
-```bash
-# Install client if needed: sudo apt install postgresql-client
-psql -h localhost -p 5432 -U postgres -d shipoftheseus -c "SELECT id, username, email, is_active, created_at FROM users ORDER BY created_at DESC;"
-```
-Password: value of `POSTGRES_PASSWORD` in `.env` (default `postgres`).
-
-**Option 3 – Script to list users:**
-
-From the repo root (with backend venv activated so `python-dotenv` and `psycopg2-binary` are available):
-
-```bash
-# If .env uses host "postgres" (Docker internal), override for host-side run:
-export LIST_USERS_HOST=localhost
-python scripts/list_users.py
-```
-
-Or from the backend directory:
-
-```bash
-cd backend
-export LIST_USERS_HOST=localhost
-python ../scripts/list_users.py
-```
-
-**GUI (optional):** Use a client like **pgAdmin**, **DBeaver**, or **VS Code PostgreSQL extension** and connect to `localhost`, port `5432`, database `shipoftheseus`, user `postgres`, with the password from `.env`.
-
 ## 📚 Documentation
 
 - [DEVELOPMENT.md](DEVELOPMENT.md) - Development log and changelog
