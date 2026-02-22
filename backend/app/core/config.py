@@ -33,11 +33,9 @@ class Settings(BaseSettings):
         """CORS origins as a list for FastAPI middleware."""
         return _parse_origins(self.ALLOWED_ORIGINS)
     
-    # User Configuration - REQUIRED (must be set in .env)
-    USERNAME: str  # Will raise error if missing
-    USER_EMAIL: str  # Will raise error if missing
-    USER_PASSWORD: str  # Will raise error if missing
-    
+    # Database (PostgreSQL) - used for user registration/auth
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus"
+
     # Debug - optional with default
     DEBUG: bool = False
     

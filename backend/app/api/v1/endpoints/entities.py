@@ -9,6 +9,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
 from app.api.v1.deps import get_current_user
+from app.models.user import User
 from app.services.entity_extraction_service import EntityExtractionService
 from app.services.relationship_extraction_service import RelationshipExtractionService
 from app.schemas.entities import (
@@ -111,7 +112,7 @@ async def _run_extraction_task(
 @router.post("/extract", response_model=ExtractionJobStarted)
 async def start_entity_extraction(
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     extractor: EntityExtractionService = Depends(get_extraction_service),
 ):
     """
@@ -119,7 +120,7 @@ async def start_entity_extraction(
     Returns a job_id; use GET /extract/status/{job_id} for progress and
     GET /extract/result/{job_id} for the result when completed.
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     logger.info("Entity extraction requested", user=user_id)
 
     doc = await cache_get(cache_key_document(user_id))
@@ -146,12 +147,12 @@ async def start_entity_extraction(
 @router.get("/extract/status/{job_id}", response_model=ExtractionJobStatus)
 async def get_extraction_status(
     job_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Get the status and progress of an entity extraction job.
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     key = cache_key_extraction_job(job_id)
     job = await cache_get(key)
 
@@ -175,13 +176,13 @@ async def get_extraction_status(
 @router.get("/extract/result/{job_id}", response_model=DocumentEntities)
 async def get_extraction_result(
     job_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Get the extraction result when the job is completed.
     Returns 202 with status if still running.
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     key = cache_key_extraction_job(job_id)
     job = await cache_get(key)
 
@@ -226,13 +227,13 @@ def _relationship_job_id_for_entity_job(entity_job_id: str) -> str:
 )
 async def get_relationship_extraction_status(
     job_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Get the status and progress of a relationship extraction job.
     Use job_id from the entity extraction job with suffix _rel (e.g. entity_job_id_rel).
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     key = cache_key_relationship_job(job_id)
     job = await cache_get(key)
 
@@ -260,13 +261,13 @@ async def get_relationship_extraction_status(
 )
 async def get_relationship_extraction_result(
     job_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Get the graph-ready result (nodes + edges) when the relationship extraction job is completed.
     Returns 202 if still running.
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     key = cache_key_relationship_job(job_id)
     job = await cache_get(key)
 
@@ -303,14 +304,14 @@ async def get_relationship_extraction_result(
 @router.get("/extract/graph/{job_id}", response_model=DocumentGraph)
 async def get_extraction_graph(
     job_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Get the complete graph (nodes + edges) for an entity extraction job.
     Uses the entity job_id; relationship extraction is auto-triggered with job_id_rel.
     Returns the graph when relationship extraction has completed.
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     entity_key = cache_key_extraction_job(job_id)
     entity_job = await cache_get(entity_key)
 

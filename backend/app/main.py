@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logger import logger, configure_logging
 from app.api.v1.endpoints import auth, documents, entities, graph
-from app.services.user_service import initialize_user
+from app.db.init_db import create_tables
 from app.services.neo4j_service import Neo4jService
 
 # Configure logging
@@ -15,7 +15,7 @@ configure_logging()
 # Initialize the FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="JWT-based authentication backend",
+    description="Registration and JWT-based authentication backend",
     version=settings.VERSION,
     docs_url=None,  # Disable Swagger UI docs
     redoc_url=None,  # Disable ReDoc docs
@@ -57,7 +57,7 @@ async def startup_event():
     logger.info(f"Project: {settings.PROJECT_NAME} v{settings.VERSION}")
     logger.info(f"Debug mode: {settings.DEBUG}")
     logger.info(f"Allowed origins: {settings.allowed_origins_list}")
-    initialize_user()
+    await create_tables()
     try:
         neo4j = Neo4jService()
         if neo4j.health_check():

@@ -13,6 +13,38 @@ class APIClient:
         self.base_url = os.getenv("API_BASE_URL", "http://backend:8000")
         self.timeout = 5
     
+    def register(
+        self, username: str, email: str, password: str
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Register a new user.
+
+        Args:
+            username: Desired username
+            email: User email
+            password: Password (min 8 characters)
+
+        Returns:
+            Tuple of (success, error_message). error_message is set when success is False.
+        """
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/auth/register",
+                json={
+                    "username": username,
+                    "email": email,
+                    "password": password,
+                },
+                timeout=self.timeout,
+            )
+            if response.status_code == 201:
+                return True, None
+            data = response.json() if response.text else {}
+            detail = data.get("detail", "Registration failed")
+            return False, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, str(e)
+
     def login(self, username: str, password: str) -> Tuple[bool, str, Dict]:
         """
         Attempt to login user.

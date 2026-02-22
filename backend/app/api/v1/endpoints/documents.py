@@ -11,6 +11,7 @@ from PyPDF2 import PdfReader
 from io import BytesIO
 
 from app.api.v1.deps import get_current_user
+from app.models.user import User
 from app.core.logger import logger
 from app.core.cache import (
     cache_get,
@@ -57,12 +58,12 @@ def _chunk_text(text: str) -> List[str]:
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Upload a PDF document, extract its text, and store it for the current user.
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     logger.info(f"Document upload request received", user=user_id, filename=file.filename)
     
     if file.content_type and file.content_type != ALLOWED_CONTENT_TYPE:
@@ -128,12 +129,12 @@ async def upload_document(
 
 @router.get("/current")
 async def get_current_document(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Get the currently stored document for the authenticated user.
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     logger.info("Document retrieval request", user=user_id)
 
     doc = await cache_get(cache_key_document(user_id))
@@ -152,12 +153,12 @@ async def get_current_document(
 
 @router.delete("/current")
 async def clear_current_document(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Remove the stored document for the authenticated user.
     """
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     logger.info("Document deletion request", user=user_id)
 
     key = cache_key_document(user_id)

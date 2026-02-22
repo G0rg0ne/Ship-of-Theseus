@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.v1.deps import get_current_user
+from app.models.user import User
 from app.schemas.relationships import DocumentGraph
 from app.core.cache import cache_get, cache_key_extraction_job, cache_key_relationship_job
 from app.services.neo4j_service import Neo4jService
@@ -65,7 +66,7 @@ async def _get_graph_from_cache(job_id: str, user_id: str) -> DocumentGraph:
 @router.post("/save/{job_id}")
 async def save_graph_to_neo4j(
     job_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     neo4j: Optional[Neo4jService] = Depends(get_neo4j_service),
 ):
     """
@@ -73,7 +74,7 @@ async def save_graph_to_neo4j(
     Uses the entity extraction job_id; the graph is taken from the relationship extraction result.
     """
     from app.core.logger import logger
-    user_id = current_user.get("email") or current_user.get("username", "default")
+    user_id = current_user.email or current_user.username
     document_graph = await _get_graph_from_cache(job_id, user_id)
     if not neo4j:
         raise HTTPException(
@@ -90,7 +91,7 @@ async def save_graph_to_neo4j(
 
 @router.get("/list")
 async def list_neo4j_documents(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     neo4j: Optional[Neo4jService] = Depends(get_neo4j_service),
 ):
     """List all document names and stats (node_count, edge_count) stored in Neo4j."""
@@ -108,7 +109,7 @@ async def list_neo4j_documents(
 @router.get("/{document_name}", response_model=DocumentGraph)
 async def get_graph_from_neo4j(
     document_name: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     neo4j: Optional[Neo4jService] = Depends(get_neo4j_service),
 ):
     """Retrieve a document graph from Neo4j by document name."""
@@ -123,7 +124,7 @@ async def get_graph_from_neo4j(
 @router.delete("/{document_name}")
 async def delete_graph_from_neo4j(
     document_name: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     neo4j: Optional[Neo4jService] = Depends(get_neo4j_service),
 ):
     """Delete a document graph from Neo4j."""
@@ -140,7 +141,7 @@ async def delete_graph_from_neo4j(
 
 @router.get("/health")
 async def neo4j_health(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     neo4j: Optional[Neo4jService] = Depends(get_neo4j_service),
 ):
     """Check Neo4j connectivity."""

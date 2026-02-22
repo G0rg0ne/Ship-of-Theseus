@@ -29,17 +29,6 @@ def render_welcome_page():
                 padding-bottom: 0.4rem;
             ">
                 <span style="
-                    font-size: 0.65rem;
-                    font-weight: 700;
-                    letter-spacing: 0.06em;
-                    text-transform: uppercase;
-                    color: #4285f4;
-                    background: rgba(66, 133, 244, 0.12);
-                    border: 1px solid rgba(66, 133, 244, 0.25);
-                    padding: 0.1rem 0.45rem;
-                    border-radius: 4px;
-                ">Admin</span>
-                <span style="
                     font-size: 0.85rem;
                     color: rgba(255,255,255,0.75);
                 ">{username}</span>
