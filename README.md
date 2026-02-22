@@ -30,7 +30,7 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 
 ## Features
 
-- 🔐 JWT-based authentication
+- 🔐 Registration and JWT-based authentication (PostgreSQL-backed user accounts; sign up and sign in)
 - 📄 PDF document upload and text extraction
 - 🔍 Knowledge graph extraction only: "Process Document" runs entity then relationship extraction; UI shows the result as **entity → relationship → entity** cards (color-coded by entity type, no raw document text). If graph extraction fails or times out, the user sees "Couldn't extract the knowledge graph" with the specific error reason and a **Try again** option—no entity-only fallback.
 - **Graph explorer**: Search (entity/relationship/context), filter by entity type and relationship type, sort by source or relationship type; relationship context in expanders; **Entities** tab with type badges and counts; **Download graph JSON**.
@@ -39,8 +39,8 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 - 📦 Redis cache (documents, extraction jobs, relationship jobs); in-memory fallback when Redis is not set
 - 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button in the UI saves the graph to Neo4j; graphs are isolated by document filename
 - 🚀 FastAPI backend with modular architecture
-- 🎨 Streamlit 1.41+ frontend: `layout="centered"` with 860px max-width container, header with right-aligned Admin badge + username + Log out, stable upload/processing states with step feedback, clear-document confirmation; component-based design
-- 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j)
+- 🎨 Streamlit 1.41+ frontend: `layout="centered"` with 860px max-width container, header with username + Log out, Sign in / Create account tabs (fixed nested centering so auth forms render at usable width), stable upload/processing states with step feedback, clear-document confirmation; component-based design
+- 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
 - ✅ Ready for testing and extension
@@ -69,7 +69,8 @@ Ship-of-Theseus/
 │   │   ├── prompts/             # LLM prompt templates (JSON)
 │   │   │   ├── entity_extraction.json
 │   │   │   └── relationship_extraction.json
-│   │   ├── models/              # Database models (empty - ready for expansion)
+│   │   ├── models/              # ORM models
+│   │   │   └── user.py          # User model (PostgreSQL)
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   ├── auth.py
 │   │   │   ├── entities.py
@@ -79,14 +80,15 @@ Ship-of-Theseus/
 │   │   │   ├── entity_extraction_service.py
 │   │   │   ├── relationship_extraction_service.py
 │   │   │   └── neo4j_service.py   # Neo4j graph persistence (save/get/list/delete)
-│   │   └── db/                  # Database connection (empty - ready for expansion)
+│   │   └── db/                  # PostgreSQL (async engine, session, init_tables)
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
 │   ├── app.py                   # Main Streamlit app
 │   ├── pages/                   # Multi-page app pages (empty - ready for expansion)
 │   ├── components/              # Reusable UI components
-│   │   ├── login_form.py
+│   │   ├── login_form.py        # Sign in / Create account tabs
+│   │   ├── register_form.py     # Registration form
 │   │   ├── welcome_page.py
 │   │   └── pdf_section.py
 │   ├── services/
@@ -106,6 +108,10 @@ Ship-of-Theseus/
 │   ├── app_YYYY-MM-DD.log      # Backend daily logs
 │   ├── errors_YYYY-MM-DD.log   # Backend error logs
 │   └── frontend_YYYY-MM-DD.log # Frontend daily logs
+├── scripts/                     # Helper scripts
+│   ├── ensure-data-dirs.ps1    # Create .data dirs (PowerShell)
+│   └── ensure-data-dirs.sh     # Create .data dirs (Bash/WSL)
+├── .data/                       # Local Docker data (gitignored): redis_data, neo4j_data, postgres_data
 ├── .env.example                 # Environment variables template
 ├── .gitignore
 ├── docker-compose.yml
@@ -130,17 +136,25 @@ Ship-of-Theseus/
    
    # Or manually edit .env with your values:
    # - SECRET_KEY: Use a strong random string
-   # - USERNAME: Your admin username
-   # - USER_EMAIL: Your admin email
-   # - USER_PASSWORD: Your secure password
+   # - DATABASE_URL: Optional; default works with docker-compose (PostgreSQL)
    ```
 
-2. **Start services**:
+2. **Create local data directories** (Redis, Neo4j, PostgreSQL data are stored under `.data/` in the repo):
+   ```bash
+   # PowerShell (Windows)
+   ./scripts/ensure-data-dirs.ps1
+
+   # Bash / WSL / Git Bash
+   ./scripts/ensure-data-dirs.sh
+   ```
+   Optional: set `DATA_DIR` to a different path (e.g. absolute) in `.env` if you need data elsewhere; the scripts and Compose use it.
+
+3. **Start services**:
    ```bash
    docker-compose up -d
    ```
 
-3. **Access the application**:
+4. **Access the application**:
    - Frontend: http://localhost:8501
    - Backend API: http://localhost:8000
    - Neo4j Browser (optional): http://localhost:7474 (Bolt: localhost:7687)
@@ -148,15 +162,14 @@ Ship-of-Theseus/
 
 ## ⚙️ Environment Variables
 
-See `.env.example` (project root) or `backend/.env.example` for backend and Neo4j options.
+See `.env.example` (project root) for a template. **If upgrading from the previous single-user auth:** remove `USERNAME`, `USER_EMAIL`, and `USER_PASSWORD` from your `.env`; user accounts are now stored in PostgreSQL.
 
 ### Required Variables (app will not start without these):
 - `SECRET_KEY` - JWT secret key (generate with `openssl rand -hex 32`) - **REQUIRED**
-- `USERNAME` - Admin username - **REQUIRED**
-- `USER_EMAIL` - Admin email - **REQUIRED**
-- `USER_PASSWORD` - Admin password - **REQUIRED**
 
 ### Optional Variables (have defaults):
+- `DATA_DIR` - Local directory for Docker data (Redis, Neo4j, PostgreSQL); default `.data`. Used by `docker-compose.yml` and the `scripts/ensure-data-dirs.*` scripts.
+- `DATABASE_URL` - PostgreSQL connection URL for user registration/auth (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus`; use `postgres:5432` host when running in Docker)
 - `ALLOWED_ORIGINS` - CORS origins (comma-separated, default: `http://localhost:8501`)
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
 - `DEBUG` - Debug mode (default: `False`)
@@ -213,6 +226,7 @@ pytest --cov=app --cov-report=html
 `http://localhost:8000/api`
 
 ### Authentication Endpoints
+- `POST /auth/register` - Create a new user account (username, email, password)
 - `POST /auth/login` - Login and get JWT token
 - `GET /auth/me` - Get current user info (requires auth)
 - `GET /auth/verify` - Verify token validity (requires auth)
@@ -239,15 +253,38 @@ pytest --cov=app --cov-report=html
 - `DELETE /graph/{document_name}` - Delete document graph from Neo4j (requires auth)
 - `GET /graph/health` - Neo4j connectivity check (requires auth)
 
-## 🐳 Docker, Redis, and Neo4j
+## 🐳 Docker, Redis, PostgreSQL, and Neo4j
 
-With Docker Compose, the backend uses **Redis** for caching and **Neo4j** for persistent graph storage:
+With Docker Compose, the backend uses **Redis** for caching, **PostgreSQL** for user accounts (registration/login), and **Neo4j** for persistent graph storage:
 - **Documents**: Stored under `documents:{user_id}` (TTL 24h)
 - **Extraction jobs**: Status and result under `extraction:job:{job_id}` (TTL 1h)
 - **Relationship jobs**: Status and graph result under `extraction:relationships:job:{job_id}` (TTL 1h)
 
-- **Redis** runs as service `redis`; the backend gets `REDIS_URL=redis://redis:6379/0` when using Docker. For local runs, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
-- **Neo4j** runs as service `neo4j` with persistent volume `neo4j_data`. **IMPORTANT**: Set `NEO4J_URI=bolt://neo4j:7687` in `.env` when using Docker (not `localhost`). The authentication credentials (`NEO4J_USER` and `NEO4J_PASSWORD`) must match those in `docker-compose.yml` (default: `neo4j/password123`). Each document's graph is stored separately (isolated by document filename). Use the "Add to Knowledge Base" button in the PDF section to save the extracted graph to Neo4j.
+- **Redis** runs as service `redis`; data is stored **locally** in `.data/redis_data/` (or `$DATA_DIR/redis_data` if set). The backend gets `REDIS_URL=redis://redis:6379/0` when using Docker. For local runs, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
+- **PostgreSQL** runs as service `postgres` (PostgreSQL 16). Data is stored **locally** in `.data/postgres_data/` (or `$DATA_DIR/postgres_data` if set). The backend connects via `DATABASE_URL` (injected by docker-compose). Users register and log in via the frontend; credentials are stored in PostgreSQL.
+- **Neo4j** runs as service `neo4j`. Data is stored **locally** in `.data/neo4j_data/` (or `$DATA_DIR/neo4j_data` if set). **IMPORTANT**: Set `NEO4J_URI=bolt://neo4j:7687` in `.env` when using Docker (not `localhost`). The authentication credentials (`NEO4J_USER` and `NEO4J_PASSWORD`) must match those in `docker-compose.yml` (default: `neo4j/password123`). Each document's graph is stored separately (isolated by document filename). Use the "Add to Knowledge Base" button in the PDF section to save the extracted graph to Neo4j.
+
+Create the local data directories before first run (Setup step 2), or run `scripts/ensure-data-dirs.ps1` (PowerShell) or `scripts/ensure-data-dirs.sh` (Bash/WSL).
+
+### If you see: "error while creating mount source path ... file exists" (Docker Desktop + WSL2)
+
+This is a known Docker Desktop bug with bind mounts when the project is on a Windows path. **Recommended fix: run Docker from inside WSL** so the project path is a Linux path:
+
+1. Open **WSL** (e.g. Ubuntu) and go to the project:
+   ```bash
+   cd /mnt/e/repos/Ship-of-Theseus
+   ```
+   (Use the path that matches your drive; `e` → your repo drive letter.)
+
+2. Create data dirs and start:
+   ```bash
+   ./scripts/ensure-data-dirs.sh
+   docker compose up -d
+   ```
+
+Data will still live in `.data/` under the repo (visible in both WSL and Windows at the same path).
+
+**Alternative:** From Windows, run `docker compose down`, **restart Docker Desktop**, then run `./scripts/ensure-data-dirs.ps1` and `docker compose up -d` again. If it still fails, use the WSL method above.
 
 ## 🐳 Docker Commands
 
@@ -265,6 +302,47 @@ docker-compose down
 # Stop and remove volumes
 docker-compose down -v
 ```
+
+### Checking the database and monitoring users (WSL)
+
+The **PostgreSQL** database for user accounts runs in the container `ship_postgres` and is exposed on **port 5432**. Data lives in the Docker named volume `postgres_data` (not a folder in the repo).
+
+**Option 1 – `psql` inside the container (from WSL):**
+
+```bash
+docker exec -it ship_postgres psql -U postgres -d shipoftheseus -c "\dt"
+docker exec -it ship_postgres psql -U postgres -d shipoftheseus -c "SELECT id, username, email, is_active, created_at FROM users ORDER BY created_at DESC;"
+```
+
+**Option 2 – `psql` from your WSL host (connect to localhost):**
+
+Ensure the stack is up (`docker compose up -d`). Then:
+
+```bash
+# Install client if needed: sudo apt install postgresql-client
+psql -h localhost -p 5432 -U postgres -d shipoftheseus -c "SELECT id, username, email, is_active, created_at FROM users ORDER BY created_at DESC;"
+```
+Password: value of `POSTGRES_PASSWORD` in `.env` (default `postgres`).
+
+**Option 3 – Script to list users:**
+
+From the repo root (with backend venv activated so `python-dotenv` and `psycopg2-binary` are available):
+
+```bash
+# If .env uses host "postgres" (Docker internal), override for host-side run:
+export LIST_USERS_HOST=localhost
+python scripts/list_users.py
+```
+
+Or from the backend directory:
+
+```bash
+cd backend
+export LIST_USERS_HOST=localhost
+python ../scripts/list_users.py
+```
+
+**GUI (optional):** Use a client like **pgAdmin**, **DBeaver**, or **VS Code PostgreSQL extension** and connect to `localhost`, port `5432`, database `shipoftheseus`, user `postgres`, with the password from `.env`.
 
 ## 📚 Documentation
 
