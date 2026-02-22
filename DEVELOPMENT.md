@@ -6,6 +6,66 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-23] - CONFIG (Docker data stored locally in .data/)
+
+### Changes
+- **Docker Compose**: Redis, Neo4j, and PostgreSQL now use **local bind mounts** so data is stored on the host under `.data/redis_data`, `.data/neo4j_data`, and `.data/postgres_data`. Replaced named volumes with `${DATA_DIR:-.data}/<service>_data` so the data root is configurable via `DATA_DIR` (e.g. in `.env`).
+- **Scripts**: Added `scripts/ensure-data-dirs.ps1` (PowerShell) and `scripts/ensure-data-dirs.sh` (Bash/WSL) to create the local data directories before first `docker compose up`; both respect `DATA_DIR`.
+- **Docs**: README Setup step 2 added (create data dirs); Docker section updated to describe local data paths and optional `DATA_DIR`; project structure updated with `scripts/` and `.data/`. `.gitignore` updated with `.data/`.
+
+### Files Modified
+- `docker-compose.yml` – bind mounts `${DATA_DIR:-.data}/redis_data`, `neo4j_data`, `postgres_data`; removed top-level `volumes` block
+- `scripts/ensure-data-dirs.ps1` (new), `scripts/ensure-data-dirs.sh` (new)
+- `.gitignore` – added `.data/`
+- `README.md` – Setup step 2, env var `DATA_DIR`, Docker section, project structure
+
+### Rationale
+- User requested that Redis, Neo4j, and PostgreSQL data be saved locally in a project data folder instead of Docker-managed named volumes, for easier backup and visibility.
+
+### Breaking Changes
+- None for new setups. If you previously used the named volumes (`redis_data`, `neo4j_data`, `postgres_data`), data from those volumes is not automatically migrated to `.data/`. To keep that data, copy from the old volume paths or attach the old volumes once and dump/restore as needed. New runs will use `.data/` by default.
+
+### Next Steps
+- Optional: document migration from old named volumes if users need to preserve existing data.
+
+---
+
+## [2026-02-22] - FEATURE (DB-backed registration auth)
+
+### Changes
+- **Authentication**: Replaced single-user env-var authentication with PostgreSQL-backed registration and login. Users can create an account and sign in; JWT is still used for session tokens.
+- **Backend**: Added PostgreSQL 16 service to docker-compose (dev and prod). Introduced SQLAlchemy 2.0 async with asyncpg: `backend/app/db/database.py` (engine, session factory, `get_db`), `backend/app/db/init_db.py` (`create_tables()` at startup). Added `User` ORM model (UUID primary key, username, email, hashed_password, is_active, created_at). New schemas: `UserCreate` (registration), updated `UserResponse` (id, is_active, created_at). User service rewritten: `get_user_by_username`, `get_user_by_email`, `create_user`, `authenticate_user`. New endpoint `POST /api/auth/register`; login and `/auth/me` now use DB. `get_current_user` dependency now returns `User` from PostgreSQL. Removed `USERNAME`, `USER_EMAIL`, `USER_PASSWORD` from config; added `DATABASE_URL`.
+- **Frontend**: Added `register_form.py`; login form now has "Sign in" and "Create account" tabs. API client has `register(username, email, password)`. Removed hardcoded "Admin" badge from welcome page header.
+- **Docs**: Updated README (auth description, project structure, env vars, API endpoints, Docker section). Added `.env.example` with `DATABASE_URL` and no single-user vars.
+
+### Files Modified
+- `docker-compose.yml`, `docker-compose.prod.yml` – postgres service, backend env DATABASE_URL, postgres_data volume
+- `backend/app/core/config.py` – DATABASE_URL added; USERNAME, USER_EMAIL, USER_PASSWORD removed
+- `backend/app/main.py` – create_tables() on startup; removed initialize_user
+- `backend/app/db/database.py` (new), `backend/app/db/init_db.py` (new), `backend/app/db/__init__.py` (new)
+- `backend/app/models/user.py` (new), `backend/app/models/__init__.py` (new)
+- `backend/app/schemas/auth.py` – UserCreate, UserResponse updated
+- `backend/app/services/user_service.py` – DB-backed CRUD and auth
+- `backend/app/api/v1/endpoints/auth.py` – register endpoint; login/me/verify use DB
+- `backend/app/api/v1/deps.py` – get_current_user returns User from DB
+- `backend/app/api/v1/endpoints/documents.py`, `entities.py`, `graph.py` – current_user type User, user_id from user attributes
+- `backend/requirements.txt` – sqlalchemy[asyncio], asyncpg, psycopg2-binary
+- `frontend/components/register_form.py` (new), `frontend/components/login_form.py` – tabs, register form
+- `frontend/components/welcome_page.py` – Admin badge removed
+- `frontend/services/api_client.py` – register()
+- `.env.example` (new), `README.md`, `DEVELOPMENT.md`
+
+### Rationale
+- User requested moving from JWT-only single-user auth to registration-based sign-up with a robust database (PostgreSQL). JWT retained for sessions; user store moved to PostgreSQL.
+
+### Breaking Changes
+- **Environment**: `USERNAME`, `USER_EMAIL`, and `USER_PASSWORD` are no longer used. Remove them from `.env` and set `DATABASE_URL` if overriding (default works with docker-compose). First run with Docker will create the `users` table automatically.
+
+### Next Steps
+- Optional: add Alembic for migrations; email verification or password reset flows.
+
+---
+
 ## [2026-02-21 12:30] - UI/Refactor (centered layout + header account controls)
 
 ### Changes
@@ -565,6 +625,31 @@ None - only affects configuration. Existing users need to update their `.env` fi
 - Users should update their `.env` file with the correct `NEO4J_URI=bolt://neo4j:7687`
 - Restart backend container with `docker-compose restart backend`
 - Verify Neo4j connectivity with `GET /api/graph/health` endpoint
+
+---
+
+## [2026-02-23 00:14] - BUGFIX
+
+### Changes
+- Fixed auth UI sizing issue where the registration form rendered too narrow due to nested centering.
+- Refactored the registration component to support both standalone centered rendering and embedded tab rendering.
+- Updated login/register tabs to use the embedded registration layout and improved sign-in button naming consistency.
+- Updated README feature notes to document the auth layout fix.
+
+### Files Modified
+- `frontend/components/register_form.py`
+- `frontend/components/login_form.py`
+- `README.md`
+
+### Rationale
+The registration form was being centered in both the auth tabs container and the register component itself, creating a compressed column that made the form difficult to use. Removing the duplicate centering keeps the design consistent while restoring practical form width.
+
+### Breaking Changes
+None.
+
+### Next Steps
+- Manually verify auth page layout at common desktop widths (1366px and 1920px).
+- Consider adding a small visual regression check for auth page spacing in CI.
 
 ---
 
