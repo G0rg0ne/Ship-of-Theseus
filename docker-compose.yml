@@ -1,5 +1,11 @@
 version: '3.8'
 
+# Named volumes avoid Docker Desktop WSL2 bind-mount "file exists" errors.
+volumes:
+  redis_data:
+  neo4j_data:
+  postgres_data:
+
 services:
   redis:
     image: redis:7-alpine
@@ -27,7 +33,7 @@ services:
     environment:
       NEO4J_AUTH: "${NEO4J_USER}/${NEO4J_PASSWORD}"
     volumes:
-      - ./neo4j_data:/data
+      - ./data/neo4j_data:/data
     networks:
       - app_network
     healthcheck:
@@ -66,8 +72,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-shipoftheseus}"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -111,9 +115,4 @@ services:
 networks:
   app_network:
     driver: bridge
-
-volumes:
-  redis_data:
-  neo4j_data:
-  postgres_data:
 

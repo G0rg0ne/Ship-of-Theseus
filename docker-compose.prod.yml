@@ -32,6 +32,24 @@ services:
       retries: 5
       start_period: 30s
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: ship_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      POSTGRES_DB: "${POSTGRES_DB:-shipoftheseus}"
+    volumes:
+      - postgres_data:/data
+    networks:
+      - ship_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-shipoftheseus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -44,6 +62,8 @@ services:
       redis:
         condition: service_healthy
       neo4j:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - ship_network
@@ -85,3 +105,4 @@ networks:
 volumes:
   redis_data:
   neo4j_data:
+  postgres_data:
