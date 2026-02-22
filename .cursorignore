@@ -89,3 +89,4 @@ dmypy.json
 *.parquet
 data/
 datasets/
+data/*

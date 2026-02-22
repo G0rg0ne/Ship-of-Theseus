@@ -17,4 +17,5 @@ ENV/
 *.md
 .vscode
 .idea
+data/*
 

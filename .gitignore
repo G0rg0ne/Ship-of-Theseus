@@ -111,9 +111,12 @@ dmypy.json
 deploy.sh.bak
 *.orig
 
+# Docker local data (Redis, Neo4j, Postgres)
+.data/
+
 #CLAUDE
 CLAUDE.md
 
 .cursor/plans/*
 DEVELOPMENT.md
-neo4j_data/*
+data/*
