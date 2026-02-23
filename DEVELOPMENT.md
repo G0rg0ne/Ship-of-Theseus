@@ -653,6 +653,49 @@ None.
 
 ---
 
+## [2026-02-23 01:00] - Bugfix
+
+### Changes
+- Fixed PostgreSQL data not persisting to local `data/postgres_data` directory
+- Corrected bind-mount target from `/data` to `/var/lib/postgresql/data` (PostgreSQL's actual data directory)
+- Removed unused `postgres_data` named volume declaration from top-level `volumes` section
+
+### Files Modified
+- `docker-compose.yml`
+
+### Rationale
+The postgres service volume was mounted to `/data` inside the container, but PostgreSQL stores all data under `/var/lib/postgresql/data`. The bind mount was therefore never written to, leaving the host directory empty. Fixing the mount path ensures the database files are saved locally and survive container recreation.
+
+### Breaking Changes
+Existing data in the Docker-managed `postgres_data` named volume (if any was stored there) is not automatically migrated. Since the named volume was not actually wired to the postgres service, there is no data loss.
+
+### Next Steps
+- Consider adding a `.gitkeep` or `.gitignore` inside `data/postgres_data` to track the directory in git while excluding its contents.
+
+---
+
+## [2026-02-23 00:00] - BUGFIX
+
+### Changes
+- Converted Neo4j and Postgres bind mounts to named volumes to fix Docker Desktop WSL2 bind-mount error
+- Added `postgres_data` named volume declaration to top-level `volumes` section
+- Changed `./data/neo4j_data:/data` → `neo4j_data:/data`
+- Changed `./data/postgres_data:/var/lib/postgresql/data` → `postgres_data:/var/lib/postgresql/data`
+
+### Files Modified
+- `docker-compose.yml`
+
+### Rationale
+Docker Desktop on Windows with WSL2 fails to create bind-mount bridge paths (`/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/...`) when the source directory does not already exist on the host. Named volumes are managed entirely inside the Docker/WSL2 layer and bypass this fragile host-path bridge, eliminating the error.
+
+### Breaking Changes
+Any data previously stored in `./data/neo4j_data` or `./data/postgres_data` host directories will not be automatically migrated into the new named volumes. Fresh container starts will begin with empty databases.
+
+### Next Steps
+- If existing database data needs to be preserved, export it before recreating containers and import it afterwards.
+
+---
+
 ## Previous Development
 
 The project was initialized with:

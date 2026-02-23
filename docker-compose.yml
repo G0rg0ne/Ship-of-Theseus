@@ -33,7 +33,7 @@ services:
     environment:
       NEO4J_AUTH: "${NEO4J_USER}/${NEO4J_PASSWORD}"
     volumes:
-      - ./data/neo4j_data:/data
+      - neo4j_data:/data
     networks:
       - app_network
     healthcheck:
@@ -55,7 +55,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/data
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - app_network
     healthcheck:
