@@ -6,6 +6,51 @@ This file tracks all development changes, features, bug fixes, and architectural
 
 ---
 
+## [2026-02-24] - CONFIG (Run backend and frontend containers as non-root)
+
+### Changes
+- **backend/Dockerfile**: Added non-root user `app` (UID/GID 1000), set ownership of `/app` to `app:app`, and switched to `USER app` before CMD so uvicorn runs as non-root.
+- **frontend/Dockerfile**: Same pattern—created user `app`, chown `/app`, and `USER app` before CMD so Streamlit runs as non-root.
+
+### Files Modified
+- `backend/Dockerfile`
+- `frontend/Dockerfile`
+
+### Rationale
+- Running as non-root reduces risk if the container is compromised and follows common security practice for containerized apps.
+
+### Breaking Changes
+- None. No volume mounts or ports require root in the current setup.
+
+### Next Steps
+- None.
+
+---
+
+## [2026-02-24] - CONFIG (Bind-mount /data folder for persistent storage)
+
+### Changes
+- **docker-compose.yml (local/WSL2)**: Replaced named volumes with bind mounts to `./data/redis`, `./data/neo4j`, and `./data/postgres`. Removed top-level `volumes` block. Data is stored on the host under the project `data/` folder for visibility and backup.
+- **docker-compose.prod.yml (Hetzner)**: Replaced named volumes with bind mounts to `/data/redis`, `/data/neo4j`, and `/data/postgres` on the host. Removed top-level `volumes` block. **Bug fix**: Postgres was previously mounted at `/data` inside the container; PostgreSQL expects `/var/lib/postgresql/data`. Prod Postgres mount is now `/data/postgres:/var/lib/postgresql/data` so data is actually persisted.
+- **.gitignore**: Added `data/` so the local data folder is not committed.
+
+### Files Modified
+- `docker-compose.yml` – bind mounts `./data/redis`, `./data/neo4j`, `./data/postgres`; removed `volumes` block
+- `docker-compose.prod.yml` – bind mounts `/data/redis`, `/data/neo4j`, `/data/postgres` (Postgres path fixed); removed `volumes` block
+- `.gitignore` – added `data/`
+
+### Rationale
+- User requested that all data be saved in a `/data` folder for both WSL2 (local) and Hetzner (prod), for consistent persistence and backup. Bind mounts make data visible on disk and avoid accidental loss with `docker compose down -v`.
+
+### Breaking Changes
+- **Local**: If you previously used named volumes, existing data is not in `./data/`. Create `./data/redis`, `./data/neo4j`, `./data/postgres` before first run (Docker will create them on first start if the parent `data/` exists). To migrate, copy from the old volume paths or dump/restore as needed.
+- **Prod**: Because the prod Postgres mount path was wrong before, any existing prod Postgres data may be empty or in the wrong place. After deploying, Postgres may start fresh. To preserve existing users, run `pg_dump` from the running postgres container before deploying.
+
+### Next Steps
+- On first run (local or prod), ensure the host directories exist (e.g. `mkdir -p data/redis data/neo4j data/postgres` locally, or `/data/redis`, `/data/neo4j`, `/data/postgres` on Hetzner). Optional: add a small script or docs for creating these dirs.
+
+---
+
 ## [2026-02-23] - CONFIG (Docker data stored locally in .data/)
 
 ### Changes

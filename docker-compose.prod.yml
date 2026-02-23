@@ -6,7 +6,7 @@ services:
     container_name: ship_redis
     restart: unless-stopped
     volumes:
-      - redis_data:/data
+      - /data/redis:/data
     networks:
       - ship_network
     healthcheck:
@@ -22,7 +22,7 @@ services:
     environment:
       NEO4J_AUTH: "${NEO4J_USER}/${NEO4J_PASSWORD}"
     volumes:
-      - neo4j_data:/data
+      - /data/neo4j:/data
     networks:
       - ship_network
     healthcheck:
@@ -40,8 +40,9 @@ services:
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
       POSTGRES_DB: "${POSTGRES_DB:-shipoftheseus}"
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - postgres_data:/data
+      - /data/postgres:/var/lib/postgresql/data
     networks:
       - ship_network
     healthcheck:
@@ -101,8 +102,3 @@ networks:
     driver: bridge
   caddy_proxy:
     external: true
-
-volumes:
-  redis_data:
-  neo4j_data:
-  postgres_data:
