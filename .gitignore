@@ -113,10 +113,10 @@ deploy.sh.bak
 
 # Docker local data (Redis, Neo4j, Postgres)
 .data/
+data/
 
 #CLAUDE
 CLAUDE.md
 
 .cursor/plans/*
 DEVELOPMENT.md
-data/*
