@@ -1,5 +1,24 @@
 # Development Log
 
+## [2026-02-24] - UI (Login page: anchor logo + app description)
+
+### Changes
+- Added ⚓ anchor logo, app title, and a one-line description of the app above the Sign in / Create account tabs in the login form.
+
+### Files Modified
+- `frontend/components/login_form.py`
+
+### Rationale
+User requested a visual identity (anchor emoji + short description drawn from DEVELOPMENT.md) on the login/welcome page to make the app's purpose immediately clear to new visitors.
+
+### Breaking Changes
+None.
+
+### Next Steps
+- None.
+
+---
+
 This file tracks all development changes, features, bug fixes, and architectural decisions for the Ship of Theseus project.
 
 **Format**: Each entry should include date, type, changes, files modified, rationale, and any breaking changes.
