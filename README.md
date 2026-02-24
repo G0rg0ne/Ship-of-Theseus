@@ -2,7 +2,7 @@
 
 Work in progress ...
 
-As I build this project you can have bellow the overview of the features that are already built and supported in the project aswell as some of the system architecture. 
+As I continue building this project, you'll find below an overview of the features that are already implemented and supported, along with a summary of the system architecture.
 
 ## Graph RAG Architecture (Overview)
 
