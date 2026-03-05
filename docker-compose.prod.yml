@@ -81,13 +81,13 @@ services:
       context: ./frontend-next
       dockerfile: Dockerfile
       args:
-        # Public API URL the browser will use (must be a browser-accessible URL, e.g. https://api.yourdomain.com)
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+        # API base URL the frontend (browser) uses to call the backend (e.g. api.gorgone.app); override via .env if needed
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://api.gorgone.app}
     container_name: ship_frontend
     restart: unless-stopped
     environment:
       # Passed through for server-side code; client bundle uses the build-time value above.
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://api.gorgone.app}
     env_file:
       - .env
     depends_on:
