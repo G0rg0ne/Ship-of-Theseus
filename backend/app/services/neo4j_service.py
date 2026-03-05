@@ -1,9 +1,11 @@
 """
 Neo4j service for persisting and querying document knowledge graphs.
 Each document's graph is isolated by document_name on nodes and relationships.
+Nodes also carry a user_id property for cross-document, per-user queries used
+by the community detection layer.
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from neo4j import GraphDatabase, Driver
 
@@ -85,10 +87,15 @@ class Neo4jService:
                 f"CREATE INDEX node_id_doc_{label}_idx IF NOT EXISTS FOR (n:{label}) ON (n.document_name, n.id)"
             )
 
-    def save_document_graph(self, document_graph: DocumentGraph) -> bool:
+    def save_document_graph(
+        self,
+        document_graph: DocumentGraph,
+        user_id: Optional[str] = None,
+    ) -> bool:
         """
         Persist a document graph to Neo4j.
         Replaces any existing graph for the same document_name.
+        Optionally tags each node with user_id for per-user graph queries.
         Returns True on success.
         """
         doc_name = document_graph.filename
@@ -112,6 +119,7 @@ class Neo4jService:
                     "entity_type": node.type,  # stored explicitly so round-trip is lossless
                     "document_name": doc_name,
                     "extracted_at": document_graph.extracted_at,
+                    "user_id": user_id or "",
                 }
                 for k, v in (node.properties or {}).items():
                     if v is not None:
@@ -256,3 +264,192 @@ class Neo4jService:
             )
             logger.info("Document graph deleted from Neo4j", document_name=document_name)
         return True
+
+    # ------------------------------------------------------------------
+    # Per-user graph access (used by community detection)
+    # ------------------------------------------------------------------
+
+    def get_user_graph(self, user_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Return (nodes, edges) for all documents belonging to user_id.
+
+        Each node dict contains all Neo4j properties.
+        Each edge dict has: source (node id), target (node id), relation_type,
+        document_name.
+        """
+        driver = self._get_driver()
+        nodes: List[Dict[str, Any]] = []
+        edges: List[Dict[str, Any]] = []
+
+        with driver.session(database=self._database) as session:
+            node_result = session.run(
+                "MATCH (n) WHERE n.user_id = $user_id RETURN n",
+                user_id=user_id,
+            )
+            for record in node_result:
+                nodes.append(dict(record["n"]))
+
+            edge_result = session.run(
+                """
+                MATCH (a)-[r:RELATES]->(b)
+                WHERE a.user_id = $user_id AND b.user_id = $user_id
+                RETURN a.id AS source, b.id AS target,
+                       r.type AS relation_type, r.document_name AS document_name
+                """,
+                user_id=user_id,
+            )
+            for record in edge_result:
+                edges.append(
+                    {
+                        "source": record["source"],
+                        "target": record["target"],
+                        "relation_type": record["relation_type"] or "",
+                        "document_name": record["document_name"] or "",
+                    }
+                )
+
+        logger.info(
+            "Loaded user graph from Neo4j",
+            user_id=user_id,
+            nodes=len(nodes),
+            edges=len(edges),
+        )
+        return nodes, edges
+
+    def get_user_document_count(self, user_id: str) -> int:
+        """Return the number of distinct documents belonging to user_id."""
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                MATCH (n) WHERE n.user_id = $user_id AND n.document_name IS NOT NULL
+                RETURN count(DISTINCT n.document_name) AS cnt
+                """,
+                user_id=user_id,
+            )
+            record = result.single()
+            return int(record["cnt"]) if record else 0
+
+    def save_community_assignments(
+        self,
+        user_id: str,
+        communities: List[Dict[str, Any]],
+    ) -> None:
+        """
+        Write community_id back to each node in Neo4j.
+
+        communities is a list of dicts with {community_id, node_ids, ...}.
+        Only nodes belonging to user_id are updated (safety guard).
+        """
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            for community in communities:
+                cid = community["community_id"]
+                for node_id in community.get("node_ids", []):
+                    session.run(
+                        """
+                        MATCH (n {user_id: $user_id, id: $node_id})
+                        SET n.community_id = $community_id
+                        """,
+                        user_id=user_id,
+                        node_id=node_id,
+                        community_id=cid,
+                    )
+        logger.success(
+            "Community assignments saved to Neo4j",
+            user_id=user_id,
+            communities=len(communities),
+        )
+
+    # ------------------------------------------------------------------
+    # Brain node – permanent per-user knowledge brain
+    # ------------------------------------------------------------------
+
+    def _ensure_brain_index(self, session: Any) -> None:
+        """Create a uniqueness constraint / index on Brain.user_id if it doesn't exist."""
+        session.run(
+            "CREATE INDEX brain_user_id_idx IF NOT EXISTS FOR (b:Brain) ON (b.user_id)"
+        )
+
+    def save_brain_node(self, user_id: str, brain_dict: Dict[str, Any]) -> None:
+        """
+        MERGE a :Brain node for the user in Neo4j, storing the full brain summary.
+
+        The communities list is serialized to JSON so it survives Neo4j's property
+        type constraints (no nested objects).  Call this after every community
+        detection run so the brain is permanently persisted and survives Redis TTL
+        expiry or cache flushes.
+        """
+        driver = self._get_driver()
+        communities_raw = brain_dict.get("communities", [])
+        props: Dict[str, Any] = {
+            "user_id": user_id,
+            "document_count": brain_dict.get("document_count", 0),
+            "total_nodes": brain_dict.get("total_nodes", 0),
+            "total_edges": brain_dict.get("total_edges", 0),
+            "community_count": brain_dict.get("community_count", 0),
+            "last_updated": brain_dict.get("last_updated", ""),
+            "status": brain_dict.get("status", "ready"),
+            "communities_json": json.dumps(communities_raw, default=str),
+        }
+        with driver.session(database=self._database) as session:
+            self._ensure_brain_index(session)
+            session.run(
+                """
+                MERGE (b:Brain {user_id: $user_id})
+                SET b += $props
+                """,
+                user_id=user_id,
+                props=props,
+            )
+        logger.success("Brain node saved to Neo4j", user_id=user_id, communities=len(communities_raw))
+
+    def get_brain_node(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load a user's :Brain node from Neo4j.
+
+        Returns a dict matching the UserBrain schema (with 'communities' already
+        deserialized from JSON), or None if no Brain node exists yet.
+        """
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                "MATCH (b:Brain {user_id: $user_id}) RETURN b",
+                user_id=user_id,
+            )
+            record = result.single()
+            if record is None:
+                return None
+            props = dict(record["b"])
+            communities_json = props.pop("communities_json", "[]")
+            try:
+                communities = json.loads(communities_json)
+            except Exception:
+                communities = []
+            return {
+                "user_id": props.get("user_id", user_id),
+                "document_count": props.get("document_count", 0),
+                "total_nodes": props.get("total_nodes", 0),
+                "total_edges": props.get("total_edges", 0),
+                "community_count": props.get("community_count", 0),
+                "last_updated": props.get("last_updated", ""),
+                "status": props.get("status", "ready"),
+                "communities": communities,
+            }
+
+    def delete_user_data(self, user_id: str) -> None:
+        """
+        Permanently delete all Neo4j data for the user: entity nodes, relationships,
+        and the Brain node. Used for "Clear Brain" / start from scratch.
+        """
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            session.run(
+                "MATCH (n) WHERE n.user_id = $user_id DETACH DELETE n",
+                user_id=user_id,
+            )
+            session.run(
+                "MATCH (b:Brain {user_id: $user_id}) DETACH DELETE b",
+                user_id=user_id,
+            )
+        logger.info("User data deleted from Neo4j", user_id=user_id)
