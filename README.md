@@ -32,18 +32,16 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 
 - 🔐 Registration and JWT-based authentication (PostgreSQL-backed user accounts; sign up and sign in)
 - 📄 PDF document upload and text extraction
-- 🔍 Knowledge graph extraction only: "Process Document" runs entity then relationship extraction; UI shows the result as **entity → relationship → entity** cards (color-coded by entity type, no raw document text). If graph extraction fails or times out, the user sees "Couldn't extract the knowledge graph" with the specific error reason and a **Try again** option—no entity-only fallback.
-- **Graph explorer**: Search (entity/relationship/context), filter by entity type and relationship type, sort by source or relationship type; relationship context in expanders; **Entities** tab with type badges and counts; **Download graph JSON**.
-- **Knowledge Base browser**: Collapsible "Knowledge Base — browse saved graphs" section: list saved documents, select and load a graph, view it in the same explorer (no backend changes).
+- 🔍 **Knowledge graph extraction**: "Process Document" runs entity then relationship extraction; shows entity + relationship counts. If extraction fails or times out, the user sees a clear error and a **Try again** option.
 - 🔗 Relationship extraction (auto-triggered after entities); constrained to extracted entities only; graph-ready output (nodes + edges)
-- 📦 Redis cache (documents, extraction jobs, relationship jobs); in-memory fallback when Redis is not set
-- 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button in the UI saves the graph to Neo4j; graphs are isolated by document filename
+- 📦 Redis cache (documents, extraction jobs, relationship jobs, community brain); in-memory fallback when Redis is not set
+- 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button saves the graph to Neo4j; nodes are tagged with `user_id` and `document_name`
+- 🧠 **Community Detection / Knowledge Brain**: After every document is added to the knowledge base, Louvain community detection runs automatically (as a background task) across *all* of the user's documents in Neo4j. The result is the user's **Knowledge Brain** — a set of clusters grouping related entities across documents. The brain is displayed in the UI and cached in Redis. Users can also manually re-run detection via "Refresh".
 - 🚀 FastAPI backend with modular architecture
-- 🎨 Streamlit 1.41+ frontend: `layout="centered"` with 860px max-width container, header with username + Log out, Sign in / Create account tabs (fixed nested centering so auth forms render at usable width), stable upload/processing states with step feedback, clear-document confirmation; component-based design
+- 🎨 **Next.js 14** frontend (TypeScript, Tailwind CSS, shadcn/ui): **Nautical + Scholarly** dark UI — warm amber/gold accents on deep navy; Crimson Pro serif headings; **welcome page** with asymmetric split: animated **node constellation** canvas (amber/teal particles + connecting lines) and horizontal journey strip (Upload → Extract → Build → Explore) on the left; auth panel with left accent bar on the right; **dashboard** with dot-grid background, anchor branding, accent-top cards; PDF upload (progress stepper), **Knowledge Brain** (metrics, force-directed graph, slide-in community panel)
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
-- ✅ Ready for testing and extension
 
 ## 📁 Project Structure
 
@@ -58,7 +56,8 @@ Ship-of-Theseus/
 │   │   │       │   ├── auth.py
 │   │   │       │   ├── documents.py
 │   │   │       │   ├── entities.py   # Entity extraction (parallel, progress)
-│   │   │       │   └── graph.py     # Neo4j graph persistence (save/list/get/delete)
+│   │   │       │   ├── graph.py     # Neo4j graph persistence; triggers community detection on save
+│   │   │       │   └── community.py # Community detection / knowledge brain endpoints
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
@@ -74,32 +73,31 @@ Ship-of-Theseus/
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   ├── auth.py
 │   │   │   ├── entities.py
-│   │   │   └── relationships.py
+│   │   │   ├── relationships.py
+│   │   │   └── community.py     # UserBrain & CommunityInfo schemas
 │   │   ├── services/            # Business logic
 │   │   │   ├── user_service.py
 │   │   │   ├── entity_extraction_service.py
 │   │   │   ├── relationship_extraction_service.py
-│   │   │   └── neo4j_service.py   # Neo4j graph persistence (save/get/list/delete)
+│   │   │   ├── neo4j_service.py   # Neo4j graph persistence + user-scoped graph queries
+│   │   │   └── community_detection_service.py  # Louvain community detection
 │   │   └── db/                  # PostgreSQL (async engine, session, init_tables)
 │   ├── requirements.txt
 │   └── Dockerfile
-├── frontend/
-│   ├── app.py                   # Main Streamlit app
-│   ├── pages/                   # Multi-page app pages (empty - ready for expansion)
-│   ├── components/              # Reusable UI components
-│   │   ├── login_form.py        # Sign in / Create account tabs
-│   │   ├── register_form.py     # Registration form
-│   │   ├── welcome_page.py
-│   │   └── pdf_section.py
-│   ├── services/
-│   │   └── api_client.py        # API client
-│   ├── utils/                   # Helper functions
-│   │   ├── auth_utils.py
-│   │   └── logger.py            # Loguru logging configuration
-│   ├── .streamlit/
-│   │   └── config.toml
-│   ├── requirements.txt
+├── frontend-next/               # Next.js 14 frontend (primary UI)
+│   ├── src/
+│   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx
+│   │   ├── components/          # auth/, upload/, brain/, NodeConstellation (animated canvas)
+│   │   ├── hooks/               # useAuth, useUpload, useBrain
+│   │   └── lib/                 # api.ts (backend client), utils
+│   ├── package.json
+│   ├── next.config.ts
 │   └── Dockerfile
+├── frontend/                    # Legacy Streamlit app (reference)
+│   ├── app.py
+│   ├── components/
+│   ├── services/api_client.py
+│   └── ...
 ├── shared/                      # Shared utilities (ready for expansion)
 ├── tests/                       # Test files
 │   ├── backend/
@@ -170,7 +168,8 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 ### Optional Variables (have defaults):
 - `DATA_DIR` - Local directory for Docker data (Redis, Neo4j, PostgreSQL); default `.data`. Used by `docker-compose.yml` and the `scripts/ensure-data-dirs.*` scripts.
 - `DATABASE_URL` - PostgreSQL connection URL for user registration/auth (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus`; use `postgres:5432` host when running in Docker)
-- `ALLOWED_ORIGINS` - CORS origins (comma-separated, default: `http://localhost:8501`)
+- `ALLOWED_ORIGINS` - CORS origins (comma-separated). Default `http://localhost:8501`. For local Next.js dev (port 3000) use e.g. `http://localhost:3000` or `http://localhost:3000,http://localhost:8501`
+- `NEXT_PUBLIC_API_URL` - Backend API base URL for the Next.js frontend (e.g. `http://localhost:8000` when running frontend locally; in Docker the frontend uses `http://backend:8000`)
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
 - `DEBUG` - Debug mode (default: `False`)
 - `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used.
@@ -196,14 +195,14 @@ uvicorn app.main:app --reload --port 8000
 
 Logs will be automatically created in the `logs/` directory with automatic rotation and compression.
 
-### Frontend
+### Frontend (Next.js)
 ```bash
-cd frontend
-pip install -r requirements.txt
-streamlit run app.py
+cd frontend-next
+npm install
+cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL=http://localhost:8000
+npm run dev
 ```
-
-Logs will be automatically created in the `logs/` directory with automatic rotation and compression.
+The app runs at http://localhost:3000 (dark theme by default). Add a `brain-example.png` image under `frontend-next/public/` to show an example knowledge brain on the welcome page. For the legacy Streamlit UI: `cd frontend && pip install -r requirements.txt && streamlit run app.py` (port 8501).
 
 ## 🧪 Testing
 
@@ -247,11 +246,16 @@ pytest --cov=app --cov-report=html
 - `GET /entities/extract/graph/{job_id}` - Get complete graph for an entity job (uses entity job_id; returns graph when relationship extraction has completed) (requires auth)
 
 ### Graph Persistence (Neo4j) Endpoints
-- `POST /graph/save/{job_id}` - Save extracted graph to Neo4j (uses entity job_id; requires auth)
+- `POST /graph/save/{job_id}` - Save extracted graph to Neo4j and trigger community detection (uses entity job_id; requires auth)
 - `GET /graph/list` - List documents in Neo4j with node/edge counts (requires auth)
 - `GET /graph/{document_name}` - Get graph from Neo4j by document name (requires auth)
 - `DELETE /graph/{document_name}` - Delete document graph from Neo4j (requires auth)
 - `GET /graph/health` - Neo4j connectivity check (requires auth)
+
+### Community Detection / Knowledge Brain Endpoints
+- `GET /community/brain` - Get current user's knowledge brain (community detection results cached in Redis; requires auth)
+- `POST /community/detect` - Manually trigger community detection for the current user (requires auth)
+- `DELETE /community/brain` - Permanently delete the user's brain and all document graphs (requires auth)
 
 ## 🐳 Docker, Redis, PostgreSQL, and Neo4j
 
@@ -259,6 +263,7 @@ With Docker Compose, the backend uses **Redis** for caching, **PostgreSQL** for 
 - **Documents**: Stored under `documents:{user_id}` (TTL 24h)
 - **Extraction jobs**: Status and result under `extraction:job:{job_id}` (TTL 1h)
 - **Relationship jobs**: Status and graph result under `extraction:relationships:job:{job_id}` (TTL 1h)
+- **Community brain**: Per-user knowledge brain under `community:brain:{user_id}` (TTL 24h; rebuilt on each document save)
 
 - **Redis** runs as service `redis`; data is stored **locally** in `.data/redis_data/` (or `$DATA_DIR/redis_data` if set). The backend gets `REDIS_URL=redis://redis:6379/0` when using Docker. For local runs, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
 - **PostgreSQL** runs as service `postgres` (PostgreSQL 16). Data is stored **locally** in `.data/postgres_data/` (or `$DATA_DIR/postgres_data` if set). The backend connects via `DATABASE_URL` (injected by docker-compose). Users register and log in via the frontend; credentials are stored in PostgreSQL.

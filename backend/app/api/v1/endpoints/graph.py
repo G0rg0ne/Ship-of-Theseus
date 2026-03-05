@@ -1,14 +1,16 @@
 """
 Graph persistence endpoints: save/retrieve document graphs to/from Neo4j.
+After a document graph is saved, community detection is automatically
+triggered in the background to rebuild the user's merged knowledge brain.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from app.api.v1.deps import get_current_user
 from app.models.user import User
 from app.schemas.relationships import DocumentGraph
-from app.core.cache import cache_get, cache_key_extraction_job, cache_key_relationship_job
+from app.core.cache import cache_get, cache_key_extraction_job, cache_key_relationship_job, cache_set
 from app.services.neo4j_service import Neo4jService
 
 router = APIRouter()
@@ -63,15 +65,49 @@ async def _get_graph_from_cache(job_id: str, user_id: str) -> DocumentGraph:
     return DocumentGraph(**result)
 
 
+async def _background_community_detection(user_id: str, neo4j: Neo4jService) -> None:
+    """Run community detection for user_id and store the brain in cache.
+
+    Called as a FastAPI BackgroundTask after saving a document graph.
+    """
+    from app.core.logger import logger
+
+    logger.info("Background community detection started", user_id=user_id)
+    try:
+        nodes, edges = neo4j.get_user_graph(user_id)
+        if not nodes:
+            logger.info("No nodes found for community detection", user_id=user_id)
+            return
+
+        doc_count = neo4j.get_user_document_count(user_id)
+
+        from app.services.community_detection_service import build_user_brain
+        brain, communities_raw = build_user_brain(user_id, nodes, edges, doc_count)
+
+        # Write community_id onto every entity node
+        neo4j.save_community_assignments(user_id, communities_raw)
+
+        # Persist the brain permanently in Neo4j as a Brain node
+        neo4j.save_brain_node(user_id, brain.model_dump())
+
+        # Also warm the Redis cache so the next read is instant
+        brain_key = f"community:brain:{user_id}"
+        await cache_set(brain_key, brain.model_dump(), ttl_seconds=86400)
+        logger.success("Community brain saved and cached", user_id=user_id, communities=brain.community_count)
+    except Exception as exc:
+        logger.exception("Community detection background task failed", user_id=user_id, error=str(exc))
+
+
 @router.post("/save/{job_id}")
 async def save_graph_to_neo4j(
     job_id: str,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     neo4j: Optional[Neo4jService] = Depends(get_neo4j_service),
 ):
     """
-    Save the extracted graph for the given extraction job to Neo4j.
-    Uses the entity extraction job_id; the graph is taken from the relationship extraction result.
+    Save the extracted graph for the given extraction job to Neo4j,
+    then trigger community detection in the background.
     """
     from app.core.logger import logger
     user_id = current_user.email or current_user.username
@@ -82,7 +118,8 @@ async def save_graph_to_neo4j(
             detail="Neo4j is not configured or unavailable",
         )
     try:
-        neo4j.save_document_graph(document_graph)
+        neo4j.save_document_graph(document_graph, user_id=user_id)
+        background_tasks.add_task(_background_community_detection, user_id, neo4j)
         return {"ok": True, "message": "Graph saved to knowledge base", "document_name": document_graph.filename}
     except Exception as e:
         logger.exception("Failed to save graph to Neo4j", job_id=job_id, error=str(e))

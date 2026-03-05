@@ -15,7 +15,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -31,6 +31,16 @@ venv/
 ENV/
 env/
 .venv
+
+# Node / Next.js (frontend-next)
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+.npm
+.yarn/
+.pnp.*
 
 # IDEs
 .vscode/

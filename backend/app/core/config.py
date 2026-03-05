@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # CORS - stored as string from env (e.g. "http://localhost:8501,http://127.0.0.1:8501")
-    ALLOWED_ORIGINS: str = "http://localhost:8501"
+    # CORS - stored as string from env (e.g. "http://localhost:8501,http://localhost:3000")
+    ALLOWED_ORIGINS: str = "http://localhost:8501,http://localhost:3000,http://127.0.0.1:8501,http://127.0.0.1:3000"
     
     @property
     def allowed_origins_list(self) -> List[str]:

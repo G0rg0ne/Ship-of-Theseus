@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 220 20% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+    --primary: 220 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 220 20% 20%;
+    --muted: 220 14% 92%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 220 14% 92%;
+    --accent-foreground: 220 20% 20%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 220 70% 45%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 225 30% 5%;
+    --foreground: 225 15% 96%;
+    --card: 225 25% 8%;
+    --card-foreground: 225 15% 96%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 225 30% 5%;
+    --secondary: 225 20% 12%;
+    --secondary-foreground: 225 15% 96%;
+    --muted: 225 20% 12%;
+    --muted-foreground: 225 10% 52%;
+    --accent: 225 22% 14%;
+    --accent-foreground: 225 15% 96%;
+    --accent-teal: 180 55% 40%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 225 20% 14%;
+    --input: 225 20% 14%;
+    --ring: 38 92% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  /* Smooth scrollbar for dark mode */
+  .dark ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .dark ::-webkit-scrollbar-track {
+    background: hsl(225 25% 8%);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: hsl(225 20% 22%);
+    border-radius: 4px;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: hsl(225 20% 30%);
+  }
+}
+
+@layer components {
+  /* Panel with warmer border (replaces generic glassmorphism) */
+  .glass-panel {
+    @apply rounded-xl border border-amber-500/10 bg-card shadow-2xl;
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.04) inset,
+      0 25px 50px -12px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Subtle glow for primary (amber) elements */
+  .glow-primary {
+    box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.4);
+  }
+  .glow-primary-hover:hover {
+    box-shadow: 0 0 24px -4px hsl(var(--primary) / 0.5);
+  }
+
+  /* Amber accent bar on top of cards */
+  .card-accent-top {
+    border-top: 2px solid hsl(var(--primary) / 0.6);
+  }
+}
+
+@layer utilities {
+  /* Dot-grid background pattern */
+  .bg-dot-grid {
+    background-image: radial-gradient(
+      circle at center,
+      hsl(225 20% 18% / 0.6) 1px,
+      transparent 1px
+    );
+    background-size: 24px 24px;
+    background-position: 0 0;
+  }
+
+  /* Subtle noise texture overlay */
+  .noise-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+
+  /* Animated gradient mesh background for welcome page (navy + amber glow) */
+  .bg-welcome-gradient {
+    background: linear-gradient(
+        135deg,
+        hsl(225 30% 5%) 0%,
+        hsl(225 28% 6%) 40%,
+        hsl(225 30% 5%) 100%
+      );
+    position: relative;
+    overflow: hidden;
+  }
+  .bg-welcome-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        ellipse 80% 50% at 20% 40%,
+        hsl(38 92% 50% / 0.1) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 80% 60%,
+        hsl(180 55% 40% / 0.06) 0%,
+        transparent 50%
+      );
+    pointer-events: none;
+    animation: gradient-shift 12s ease-in-out infinite;
+  }
+  @keyframes gradient-shift {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.9;
+      transform: scale(1.02);
+    }
+  }
+}

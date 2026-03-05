@@ -433,3 +433,80 @@ class APIClient:
         except Exception as e:
             return False, str(e)
 
+    def get_user_brain(self, token: str) -> Tuple[bool, Optional[Dict], str]:
+        """
+        Get the current user's community detection brain.
+
+        Args:
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, brain_data, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.get(
+                f"{self.base_url}/api/community/brain",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return True, response.json(), ""
+            if response.status_code == 404:
+                return False, None, ""
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to get brain")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+
+    def trigger_community_detection(self, token: str) -> Tuple[bool, Optional[Dict], str]:
+        """
+        Manually trigger community detection for the current user.
+
+        Args:
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, brain_data, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.post(
+                f"{self.base_url}/api/community/detect",
+                headers=headers,
+                timeout=60,
+            )
+            if response.status_code == 200:
+                return True, response.json(), ""
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to trigger detection")
+            return False, None, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, None, str(e)
+
+    def delete_user_brain(self, token: str) -> Tuple[bool, str]:
+        """
+        Permanently delete the current user's brain and all document graphs from Neo4j.
+
+        Args:
+            token: JWT access token
+
+        Returns:
+            Tuple of (success, error_message)
+        """
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.delete(
+                f"{self.base_url}/api/community/brain",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return True, ""
+            data = response.json() if response.text else {}
+            detail = data.get("detail", response.text or "Failed to delete brain")
+            return False, detail if isinstance(detail, str) else str(detail)
+        except Exception as e:
+            return False, str(e)
+

@@ -78,24 +78,30 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend-next
       dockerfile: Dockerfile
+      args:
+        # Public API URL the browser will use (set in .env for prod, e.g. https://api.yourdomain.com)
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
     container_name: ship_frontend
     restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
     env_file:
       - .env
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
     networks:
       - ship_network
       - caddy_proxy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8501/"]
+      # Next.js runs on port 3000 (Streamlit was 8501)
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 60s
 
 networks:
   ship_network:

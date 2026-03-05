@@ -1,9 +1,12 @@
 """
-PDF upload and display section for authenticated users.
+PDF upload section and knowledge brain display for authenticated users.
+
+The entity/relationship raw viewer has been removed; extracted graphs are now
+automatically merged into the user's knowledge brain via community detection.
 """
-import json
 import time
-from collections import Counter
+from typing import Optional
+
 import streamlit as st
 from services.api_client import APIClient
 
@@ -18,34 +21,11 @@ PROCESSING_RELATIONSHIPS = "extracting_relationships"
 PROCESSING_DONE = "done"
 PROCESSING_ERROR = "error"
 
-# Entity type → (emoji, CSS color) for knowledge graph cards
-ENTITY_STYLE = {
-    "person": ("👤", "#4285F4"),
-    "organization": ("🏢", "#34A853"),
-    "location": ("📍", "#FBBC04"),
-    "key_term": ("🔑", "#9334E6"),
-    "other": ("•", "#5F6368"),
-}
-
-
-_TYPE_ALIASES: dict[str, str] = {
-    # Neo4j label round-trips: _type_to_label strips underscores, so restore them
-    "keyterm": "key_term",
-    "keyphrase": "key_term",
-    "key phrase": "key_term",
-    "entity": "other",
-}
-
-
-def _entity_icon_and_color(node_type: str) -> tuple[str, str]:
-    """Return (emoji, hex color) for an entity type.
-
-    Normalises the type string so Neo4j label round-trips (e.g. 'keyterm' from
-    the stored label 'Keyterm') still resolve to the correct style entry.
-    """
-    t = (node_type or "other").strip().lower().replace(" ", "_").replace("-", "_")
-    t = _TYPE_ALIASES.get(t, t)
-    return ENTITY_STYLE.get(t, ENTITY_STYLE["other"])
+# Community colour palette (cycling)
+_COMMUNITY_COLORS = [
+    "#4285F4", "#34A853", "#FBBC04", "#9334E6",
+    "#EA4335", "#00ACC1", "#F4511E", "#0B8043",
+]
 
 
 def _clear_processing_state():
@@ -55,212 +35,156 @@ def _clear_processing_state():
             del st.session_state[key]
 
 
-def _escape_html(s: str) -> str:
-    """Escape HTML for safe display."""
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+def _poll_extraction_once(
+    api_client: APIClient, job_id: str, token: str
+) -> tuple[str, Optional[str]]:
+    """
+    Perform one extraction status poll and update session state.
+    Returns ("done_success", None) | ("done_error", message) | ("continue", None).
+    Caller should st.rerun() when "continue" so the UI refreshes and this runs again.
+    """
+    if "extraction_poll_start" not in st.session_state:
+        st.session_state.extraction_poll_start = time.time()
 
+    start_time = st.session_state.extraction_poll_start
+    if time.time() - start_time > EXTRACTION_TIMEOUT_SEC:
+        _clear_processing_state()
+        if "extraction_poll_start" in st.session_state:
+            del st.session_state["extraction_poll_start"]
+        st.session_state.processing_state = PROCESSING_ERROR
+        return "done_error", "Extraction timed out."
 
-def _render_knowledge_graph_section(graph_data: dict, key_prefix: str = "") -> None:
-    """Render knowledge graph with explorer toolbar, filters, sort, and cards (context in expanders)."""
-    nodes = graph_data.get("nodes") or []
-    edges = graph_data.get("edges") or []
-    if not nodes and not edges:
-        return
+    success, status_data, error = api_client.get_extraction_status(job_id, token)
+    if not success:
+        _clear_processing_state()
+        if "extraction_poll_start" in st.session_state:
+            del st.session_state["extraction_poll_start"]
+        st.session_state.processing_state = PROCESSING_ERROR
+        return "done_error", error or "Status check failed"
 
-    k = key_prefix or "kg"
-    id_to_node = {n.get("id"): n for n in nodes}
+    completed = status_data.get("completed_chunks", 0)
+    total = max(status_data.get("total_chunks", 1), 1)
+    job_status = status_data.get("status", "pending")
 
-    # Build enriched edge list for filtering/sorting
-    edge_rows = []
-    for i, e in enumerate(edges):
-        src = id_to_node.get(e.get("source"), {})
-        tgt = id_to_node.get(e.get("target"), {})
-        src_type = (src.get("type") or "other").lower().replace(" ", "_")
-        tgt_type = (tgt.get("type") or "other").lower().replace(" ", "_")
-        src_label = src.get("label") or e.get("source") or "?"
-        tgt_label = tgt.get("label") or e.get("target") or "?"
-        rel = e.get("relation_type") or "related_to"
-        props = e.get("properties") or {}
-        ctx = props.get("context", "")
-        edge_rows.append({
-            "idx": i,
-            "src_label": src_label,
-            "tgt_label": tgt_label,
-            "src_type": src_type,
-            "tgt_type": tgt_type,
-            "rel": rel,
-            "context": ctx,
-            "source": e.get("source"),
-            "target": e.get("target"),
-        })
-
-    # Unique types and relation types for filters
-    entity_types = sorted(set(r["src_type"] for r in edge_rows) | set(r["tgt_type"] for r in edge_rows))
-    rel_types = sorted(set(r["rel"] for r in edge_rows))
-
-    # Summary metrics and Download JSON
-    st.markdown("### Knowledge graph")
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
-    with col1:
-        st.metric("Entities", len(nodes))
-    with col2:
-        st.metric("Relationships", len(edges))
-    with col3:
-        st.metric("Document", "Processed")
-    with col4:
-        st.download_button(
-            "Download graph JSON",
-            data=json.dumps(graph_data, indent=2),
-            file_name="knowledge_graph.json",
-            mime="application/json",
-            key=f"{k}_download_kg_json",
-        )
-    st.markdown("---")
-
-    if not edges:
-        st.info("No relationships extracted. Entities were found but no links between them.")
-        # Entities-only tab
-        _render_entities_tab(nodes)
-        return
-
-    # Explore toolbar: search, filters, sort
-    st.markdown("**Explore**")
-    tb1, tb2, tb3, tb4 = st.columns([2, 1, 1, 1])
-    with tb1:
-        search_query = st.text_input("Search", placeholder="Entity, relationship, or context...", key=f"{k}_search")
-    with tb2:
-        filter_entity_type = st.multiselect("Entity type", options=entity_types, default=[], key=f"{k}_filter_entity")
-    with tb3:
-        filter_rel_type = st.multiselect("Relationship type", options=rel_types, default=[], key=f"{k}_filter_rel")
-    with tb4:
-        sort_by = st.selectbox(
-            "Sort by",
-            options=["Original", "Source entity", "Relationship type"],
-            key=f"{k}_sort",
-        )
-
-    # Apply search (case-insensitive match on labels, rel, context)
-    q = (search_query or "").strip().lower()
-    if q:
-        def matches(row):
-            return (
-                q in row["src_label"].lower()
-                or q in row["tgt_label"].lower()
-                or q in row["rel"].lower()
-                or q in row["context"].lower()
-            )
-        edge_rows = [r for r in edge_rows if matches(r)]
-    if filter_entity_type:
-        edge_rows = [
-            r for r in edge_rows
-            if r["src_type"] in filter_entity_type or r["tgt_type"] in filter_entity_type
-        ]
-    if filter_rel_type:
-        edge_rows = [r for r in edge_rows if r["rel"] in filter_rel_type]
-    if sort_by == "Source entity":
-        edge_rows = sorted(edge_rows, key=lambda r: (r["src_label"].lower(), r["rel"]))
-    elif sort_by == "Relationship type":
-        edge_rows = sorted(edge_rows, key=lambda r: (r["rel"].lower(), r["src_label"].lower()))
-
-    # Tabs: Relationships (cards) and Entities
-    tab_rel, tab_ent = st.tabs(["Relationships", "Entities"])
-    with tab_rel:
-        st.caption("Entity → Relationship → Entity")
-        for i, row in enumerate(edge_rows):
-            src_icon, src_color = _entity_icon_and_color(row["src_type"])
-            tgt_icon, tgt_color = _entity_icon_and_color(row["tgt_type"])
-            src_label_esc = _escape_html(row["src_label"])
-            tgt_label_esc = _escape_html(row["tgt_label"])
-            rel_esc = _escape_html(row["rel"])
-            context_esc = _escape_html(row["context"])
-            # Build as a compact single-line string: Streamlit's Markdown parser treats
-            # 4-space-indented lines as code blocks, so any newlines inside the HTML
-            # would cause inner divs to render as raw text instead of HTML.
-            context_part = f'<div class="kg-context">{context_esc}</div>' if context_esc else ""
-            card_html = (
-                f'<div class="kg-card">'
-                f'<div style="display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem 0.75rem;width:100%;">'
-                f'<span class="kg-entity" style="color:{src_color};">{src_icon} {src_label_esc}</span>'
-                f'<span class="kg-arrow">→</span>'
-                f'<span class="kg-rel">{rel_esc}</span>'
-                f'<span class="kg-arrow">→</span>'
-                f'<span class="kg-entity" style="color:{tgt_color};">{tgt_icon} {tgt_label_esc}</span>'
-                f'</div>'
-                f'{context_part}'
-                f'</div>'
-            )
-            st.markdown(card_html, unsafe_allow_html=True)
-    with tab_ent:
-        _render_entities_tab(nodes, key_suffix=f"{k}_tab")
-    st.markdown("---")
-    return
-
-
-def _render_entities_tab(nodes: list, key_suffix: str = "") -> None:
-    """Render entities list by type with optional search."""
-    if not nodes:
-        st.info("No entities.")
-        return
-    type_counts = Counter((n.get("type") or "other").lower().replace(" ", "_") for n in nodes)
-    entity_search = st.text_input("Search entities", key=f"entity_search_{key_suffix}", placeholder="Filter by label...")
-    q = (entity_search or "").strip().lower()
-    for etype in sorted(type_counts.keys()):
-        count = type_counts[etype]
-        icon, color = _entity_icon_and_color(etype)
-        label = etype.replace("_", " ").title()
-        with st.expander(f"{icon} {label} ({count})", expanded=False):
-            subset = [n for n in nodes if (n.get("type") or "other").lower().replace(" ", "_") == etype]
-            if q:
-                subset = [n for n in subset if q in (n.get("label") or "").lower()]
-            for n in subset:
-                st.caption(n.get("label") or n.get("id") or "?")
-
-
-def _run_extraction_poll_loop(api_client: APIClient, job_id: str, token: str) -> tuple[bool, str | None]:
-    """Poll extraction status until done or timeout. Returns (success, error_message)."""
-    start_time = time.time()
-    extraction_error_reason = None
-    while (time.time() - start_time) < EXTRACTION_TIMEOUT_SEC:
-        success, status_data, error = api_client.get_extraction_status(job_id, token)
-        if not success:
-            return False, error or "Status check failed"
-        completed = status_data.get("completed_chunks", 0)
-        total = max(status_data.get("total_chunks", 1), 1)
+    if job_status == "running" or job_status == "pending":
         st.session_state.processing_progress = {
             "completed": completed,
             "total": total,
             "message": f"Extracting entities: {completed}/{total} chunks",
         }
-        status = status_data.get("status", "pending")
-        if status == "completed":
-            while (time.time() - start_time) < EXTRACTION_TIMEOUT_SEC:
-                success, graph_data, error = api_client.get_extraction_graph(job_id, token)
-                if success and graph_data:
-                    st.session_state.extraction_results = graph_data
-                    st.session_state.extraction_job_id = job_id
-                    _clear_processing_state()
-                    st.session_state.processing_state = PROCESSING_DONE
-                    return True, None
-                if not success and error and error != "Graph not ready":
-                    extraction_error_reason = error
-                    break
-                time.sleep(EXTRACTION_POLL_INTERVAL_SEC)
-            if extraction_error_reason is None:
-                extraction_error_reason = "Graph extraction timed out."
-            break
-        if status == "failed":
-            extraction_error_reason = status_data.get("error", "Unknown error")
-            break
-        time.sleep(EXTRACTION_POLL_INTERVAL_SEC)
-    else:
-        extraction_error_reason = "Extraction timed out."
-    _clear_processing_state()
-    st.session_state.processing_state = PROCESSING_ERROR
-    return False, extraction_error_reason
+        return "continue", None
+
+    if job_status == "failed":
+        _clear_processing_state()
+        if "extraction_poll_start" in st.session_state:
+            del st.session_state["extraction_poll_start"]
+        st.session_state.processing_state = PROCESSING_ERROR
+        return "done_error", status_data.get("error", "Unknown error")
+
+    # job_status == "completed" -> wait for graph (relationship extraction)
+    st.session_state.processing_state = PROCESSING_RELATIONSHIPS
+    st.session_state.processing_progress = {
+        "completed": total,
+        "total": total,
+        "message": "Building relationships from entities…",
+    }
+    success_g, graph_data, err_g = api_client.get_extraction_graph(job_id, token)
+    if success_g and graph_data:
+        st.session_state.extraction_results = graph_data
+        st.session_state.extraction_job_id = job_id
+        _clear_processing_state()
+        if "extraction_poll_start" in st.session_state:
+            del st.session_state["extraction_poll_start"]
+        st.session_state.processing_state = PROCESSING_DONE
+        return "done_success", None
+    if not success_g and err_g and err_g != "Graph not ready":
+        _clear_processing_state()
+        if "extraction_poll_start" in st.session_state:
+            del st.session_state["extraction_poll_start"]
+        st.session_state.processing_state = PROCESSING_ERROR
+        return "done_error", err_g
+    # Graph not ready yet; keep showing "Building relationships…" and continue polling
+    return "continue", None
+
+
+def _render_extraction_summary(graph_data: dict) -> None:
+    """Show a compact extraction summary (entity + relationship counts)."""
+    node_count = len(graph_data.get("nodes") or [])
+    edge_count = len(graph_data.get("edges") or [])
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Entities extracted", node_count)
+    with col2:
+        st.metric("Relationships found", edge_count)
+
+
+def _render_community_card(idx: int, community: dict) -> None:
+    """Render a single community card."""
+    color = _COMMUNITY_COLORS[idx % len(_COMMUNITY_COLORS)]
+    cid = community.get("community_id", f"community_{idx}")
+    node_count = community.get("node_count", 0)
+    top_entities = community.get("top_entities") or []
+    keywords = community.get("keywords") or []
+    doc_sources = community.get("document_sources") or []
+
+    entities_str = " · ".join(top_entities) if top_entities else "—"
+    keywords_str = ", ".join(keywords) if keywords else "—"
+
+    card_html = (
+        f'<div style="border-left:4px solid {color};padding:0.6rem 1rem;'
+        f'margin-bottom:0.6rem;background:#f8f9fa;border-radius:0 6px 6px 0;">'
+        f'<div style="font-weight:600;color:{color};font-size:0.9rem;">{cid.replace("_", " ").title()}'
+        f' &nbsp;<span style="color:#5f6368;font-weight:400;font-size:0.8rem;">({node_count} entities)</span></div>'
+        f'<div style="font-size:0.82rem;margin-top:0.2rem;color:#202124;">{entities_str}</div>'
+    )
+    if keywords:
+        card_html += (
+            f'<div style="font-size:0.76rem;color:#5f6368;margin-top:0.15rem;">'
+            f'Keywords: {keywords_str}</div>'
+        )
+    if doc_sources:
+        docs_str = ", ".join(doc_sources)
+        card_html += (
+            f'<div style="font-size:0.72rem;color:#9aa0a6;margin-top:0.1rem;">'
+            f'From: {docs_str}</div>'
+        )
+    card_html += "</div>"
+    st.markdown(card_html, unsafe_allow_html=True)
+
+
+def _render_brain_section(brain: dict) -> None:
+    """Render the user's knowledge brain community summary."""
+    st.markdown("### Your Knowledge Brain")
+
+    communities = brain.get("communities") or []
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Documents", brain.get("document_count", 0))
+    with col2:
+        st.metric("Total entities", brain.get("total_nodes", 0))
+    with col3:
+        st.metric("Relationships", brain.get("total_edges", 0))
+    with col4:
+        st.metric("Communities", brain.get("community_count", 0))
+
+    last_updated = brain.get("last_updated", "")
+    if last_updated:
+        st.caption(f"Last updated: {last_updated[:19].replace('T', ' ')} UTC")
+
+    st.markdown("---")
+    if not communities:
+        st.info("No communities detected yet.")
+        return
+
+    st.markdown(
+        "Each community groups entities that are closely connected across your documents."
+    )
+    for i, community in enumerate(communities):
+        _render_community_card(i, community)
 
 
 def render_pdf_section():
-    """Render the PDF upload section and display extracted content."""
+    """Render the PDF upload section and the knowledge brain display."""
     token = st.session_state.get("auth_token")
     if not token:
         st.warning("You must be logged in to upload documents.")
@@ -281,7 +205,7 @@ def render_pdf_section():
         if success and data:
             st.session_state.current_pdf = data
 
-    # ----- Upload card: single primary area -----
+    # ----- Upload card -----
     st.markdown("## PDF Document Upload")
     upload_container = st.container()
     with upload_container:
@@ -320,32 +244,47 @@ def render_pdf_section():
                         else:
                             st.session_state.processing_state = PROCESSING_ENTITIES
                             st.session_state.processing_job_id = job_id
-                            st.session_state.processing_progress = {"completed": 0, "total": 1, "message": "Starting..."}
+                            st.session_state.processing_progress = {
+                                "completed": 0,
+                                "total": 1,
+                                "message": "Starting extraction…",
+                            }
+                            if "extraction_poll_start" in st.session_state:
+                                del st.session_state["extraction_poll_start"]
                             st.rerun()
 
-    # ----- Show processing status and run poll loop when in progress -----
+    # ----- Processing status and poll (one poll per run, then rerun to refresh) -----
     if st.session_state.processing_state in (PROCESSING_ENTITIES, PROCESSING_RELATIONSHIPS):
         job_id = st.session_state.get("processing_job_id")
         if job_id:
             progress = st.session_state.get("processing_progress") or {}
-            msg = progress.get("message", "Processing...")
+            msg = progress.get("message", "Processing…")
+            completed = progress.get("completed", 0)
+            total = max(progress.get("total", 1), 1)
             with st.status(msg, expanded=True) as status:
                 st.caption(msg)
-                completed = progress.get("completed", 0)
-                total = max(progress.get("total", 1), 1)
-                p = 0.4 * (completed / total) if st.session_state.processing_state == PROCESSING_ENTITIES else 0.7
-                st.progress(p)
-                ok, err = _run_extraction_poll_loop(api_client, job_id, token)
-                if ok:
-                    status.update(label="Done", state="complete")
-                    st.success("Entities and relationships ready.")
+                if total > 0:
+                    p = (0.4 * (completed / total) if st.session_state.processing_state == PROCESSING_ENTITIES
+                         else 0.4 + 0.3 * (completed / total))
+                    st.progress(min(p, 1.0))
                 else:
+                    st.progress(0.0)
+                outcome, err = _poll_extraction_once(api_client, job_id, token)
+                if outcome == "done_success":
+                    status.update(label="Done", state="complete")
+                    st.success("Entities and relationships extracted.")
+                    st.rerun()
+                elif outcome == "done_error":
                     status.update(label="Error", state="error")
                     st.session_state.extraction_error = (
                         "Couldn't extract the knowledge graph. " + (err or "Unknown error.")
                     )
                     st.error(err or "Unknown error.")
-                st.rerun()
+                    st.rerun()
+                else:
+                    # continue: wait before next poll so we don't hammer the API
+                    time.sleep(EXTRACTION_POLL_INTERVAL_SEC)
+                    st.rerun()
 
     # ----- Current document and results -----
     current = st.session_state.get("current_pdf")
@@ -359,21 +298,49 @@ def render_pdf_section():
                 del st.session_state.extraction_error
                 st.session_state.uploader_key += 1
                 st.session_state.processing_state = PROCESSING_IDLE
+                if "extraction_poll_start" in st.session_state:
+                    del st.session_state["extraction_poll_start"]
                 st.rerun()
+
         elif "extraction_results" in st.session_state:
-            _render_knowledge_graph_section(st.session_state.extraction_results)
+            _render_extraction_summary(st.session_state.extraction_results)
+
             job_id = st.session_state.get("extraction_job_id")
             saved_to_kb = st.session_state.get("graph_saved_to_kb", False)
             if job_id:
                 if saved_to_kb:
-                    st.success("Graph saved to Knowledge Base")
+                    col_msg, col_btn = st.columns([4, 1])
+                    with col_msg:
+                        st.success("Document added to your Knowledge Brain")
+                    with col_btn:
+                        if st.button("Upload another", key="upload_another", type="secondary"):
+                            success_clear, _ = api_client.clear_current_document(token)
+                            for key in (
+                                "current_pdf", "last_processed_file", "extraction_results",
+                                "extraction_job_id", "graph_saved_to_kb", "extraction_error",
+                            ):
+                                if key in st.session_state:
+                                    del st.session_state[key]
+                            _clear_processing_state()
+                            st.session_state.uploader_key += 1
+                            st.rerun()
                 else:
-                    if st.button("Add to Knowledge Base", key="save_to_neo4j", help="Save this graph to the persistent Neo4j database"):
-                        with st.spinner("Saving graph to Knowledge Base..."):
+                    if st.button(
+                        "Add to Knowledge Base",
+                        key="save_to_neo4j",
+                        help="Save this graph and merge it into your knowledge brain",
+                    ):
+                        with st.spinner("Saving graph and rebuilding brain..."):
                             success, save_data, error = api_client.save_graph_to_neo4j(job_id, token)
                         if success:
                             st.session_state.graph_saved_to_kb = True
-                            st.success(f"Graph saved to Knowledge Base as **{save_data.get('document_name', filename)}**")
+                            # Invalidate cached brain so it reloads fresh
+                            if "user_brain" in st.session_state:
+                                del st.session_state["user_brain"]
+                            st.success(
+                                f"Graph saved as **{save_data.get('document_name', filename)}**. "
+                                "Community detection is running in the background."
+                            )
                             st.rerun()
                         else:
                             st.error(error or "Failed to save graph.")
@@ -396,32 +363,50 @@ def render_pdf_section():
                     else:
                         st.error(error or "Failed to clear document.")
 
-    # ----- Knowledge Base: browse saved graphs (collapsible) -----
-    # Note: Streamlit forbids nesting expanders; the graph explorer uses expanders (Context + Entities),
-    # so we implement KB "collapsible" as a toggle instead of an outer expander.
-    show_kb = st.toggle("Knowledge Base — browse saved graphs", value=False, key="kb_show_toggle")
-    if show_kb:
-        success, doc_list, error = api_client.list_neo4j_documents(token)
-        if not success or doc_list is None:
-            st.caption("Could not load saved documents." if not error else error)
-        elif not doc_list:
-            st.caption("No saved graphs yet. Process a document and use **Add to Knowledge Base** to save one.")
-        else:
-            doc_names = [d.get("document_name") or d.get("name", "?") for d in doc_list]
-            selected = st.selectbox(
-                "Select a saved document",
-                options=doc_names,
-                key="kb_doc_select",
-            )
-            if st.button("Load graph", key="kb_load_btn"):
-                with st.spinner("Loading..."):
-                    ok, graph_data, load_err = api_client.get_graph_from_neo4j(selected, token)
-                if ok and graph_data:
-                    st.session_state.kb_loaded_graph = graph_data
-                    st.session_state.kb_loaded_name = selected
-                    st.rerun()
-                else:
-                    st.error(load_err or "Failed to load graph.")
-            if st.session_state.get("kb_loaded_graph"):
-                st.markdown(f"**{st.session_state.get('kb_loaded_name', 'Graph')}**")
-                _render_knowledge_graph_section(st.session_state.kb_loaded_graph, key_prefix="kb")
+    st.markdown("---")
+
+    # ----- Knowledge Brain section -----
+    st.markdown("## Knowledge Brain")
+    st.caption(
+        "Your brain is built automatically each time you add a document to the knowledge base. "
+        "It merges all your documents into a single graph and detects clusters of related knowledge."
+    )
+
+    brain_col, refresh_col = st.columns([5, 1])
+    with refresh_col:
+        if st.button("Refresh", key="refresh_brain", help="Re-run community detection now"):
+            with st.spinner("Running community detection..."):
+                ok, brain_data, err = api_client.trigger_community_detection(token)
+            if ok and brain_data:
+                st.session_state.user_brain = brain_data
+                st.rerun()
+            else:
+                st.error(err or "Detection failed.")
+
+    with st.expander("Clear Brain — start from scratch", expanded=False):
+        st.caption("Permanently delete your brain and all saved document graphs from the knowledge base. This cannot be undone.")
+        clear_confirm = st.checkbox("I want to permanently delete my brain and all saved graphs", key="clear_brain_confirm")
+        if clear_confirm and st.button("Clear Brain", key="clear_brain_btn", type="secondary"):
+            success, error = api_client.delete_user_brain(token)
+            if success:
+                if "user_brain" in st.session_state:
+                    del st.session_state["user_brain"]
+                st.success("Brain and all saved graphs deleted.")
+                st.rerun()
+            else:
+                st.error(error or "Failed to delete brain.")
+
+    # Load brain if not already in session state
+    if "user_brain" not in st.session_state:
+        ok, brain_data, err = api_client.get_user_brain(token)
+        if ok and brain_data:
+            st.session_state.user_brain = brain_data
+
+    brain = st.session_state.get("user_brain")
+    if brain:
+        _render_brain_section(brain)
+    else:
+        st.info(
+            "No brain data yet. Upload a document, extract its knowledge graph, "
+            "then click **Add to Knowledge Base** to build your brain."
+        )
