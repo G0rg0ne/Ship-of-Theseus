@@ -38,7 +38,7 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 - 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button saves the graph to Neo4j; nodes are tagged with `user_id` and `document_name`
 - 🧠 **Community Detection / Knowledge Brain**: After every document is added to the knowledge base, Louvain community detection runs automatically (as a background task) across *all* of the user's documents in Neo4j. The result is the user's **Knowledge Brain** — a set of clusters grouping related entities across documents. The brain is displayed in the UI and cached in Redis. Users can also manually re-run detection via "Refresh".
 - 🚀 FastAPI backend with modular architecture
-- 🎨 Streamlit 1.41+ frontend: `layout="centered"` with 860px max-width container, header with username + Log out, Sign in / Create account tabs, stable upload/processing states with step feedback, clear-document confirmation; component-based design
+- 🎨 **Next.js 14** frontend (TypeScript, Tailwind CSS, shadcn/ui): **dark-mode** UI with a modern **welcome page** (split layout: hero + feature list + brain example image placeholder on the left; glassmorphic Sign in / Create account panel on the right); dashboard with PDF upload (progress stepper), **Knowledge Brain** section with metrics, **interactive force-directed graph** of entities/communities, and slide-in community detail panel
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
@@ -84,23 +84,20 @@ Ship-of-Theseus/
 │   │   └── db/                  # PostgreSQL (async engine, session, init_tables)
 │   ├── requirements.txt
 │   └── Dockerfile
-├── frontend/
-│   ├── app.py                   # Main Streamlit app
-│   ├── pages/                   # Multi-page app pages (empty - ready for expansion)
-│   ├── components/              # Reusable UI components
-│   │   ├── login_form.py        # Sign in / Create account tabs
-│   │   ├── register_form.py     # Registration form
-│   │   ├── welcome_page.py
-│   │   └── pdf_section.py
-│   ├── services/
-│   │   └── api_client.py        # API client
-│   ├── utils/                   # Helper functions
-│   │   ├── auth_utils.py
-│   │   └── logger.py            # Loguru logging configuration
-│   ├── .streamlit/
-│   │   └── config.toml
-│   ├── requirements.txt
+├── frontend-next/               # Next.js 14 frontend (primary UI)
+│   ├── src/
+│   │   ├── app/                 # App Router: page.tsx (auth), dashboard/page.tsx
+│   │   ├── components/          # auth/, upload/, brain/ (BrainGraph, BrainMetrics, CommunityPanel)
+│   │   ├── hooks/               # useAuth, useUpload, useBrain
+│   │   └── lib/                 # api.ts (backend client), utils
+│   ├── package.json
+│   ├── next.config.ts
 │   └── Dockerfile
+├── frontend/                    # Legacy Streamlit app (reference)
+│   ├── app.py
+│   ├── components/
+│   ├── services/api_client.py
+│   └── ...
 ├── shared/                      # Shared utilities (ready for expansion)
 ├── tests/                       # Test files
 │   ├── backend/
@@ -171,7 +168,8 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 ### Optional Variables (have defaults):
 - `DATA_DIR` - Local directory for Docker data (Redis, Neo4j, PostgreSQL); default `.data`. Used by `docker-compose.yml` and the `scripts/ensure-data-dirs.*` scripts.
 - `DATABASE_URL` - PostgreSQL connection URL for user registration/auth (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus`; use `postgres:5432` host when running in Docker)
-- `ALLOWED_ORIGINS` - CORS origins (comma-separated, default: `http://localhost:8501`)
+- `ALLOWED_ORIGINS` - CORS origins (comma-separated). Default `http://localhost:8501`. For local Next.js dev (port 3000) use e.g. `http://localhost:3000` or `http://localhost:3000,http://localhost:8501`
+- `NEXT_PUBLIC_API_URL` - Backend API base URL for the Next.js frontend (e.g. `http://localhost:8000` when running frontend locally; in Docker the frontend uses `http://backend:8000`)
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
 - `DEBUG` - Debug mode (default: `False`)
 - `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used.
@@ -197,14 +195,14 @@ uvicorn app.main:app --reload --port 8000
 
 Logs will be automatically created in the `logs/` directory with automatic rotation and compression.
 
-### Frontend
+### Frontend (Next.js)
 ```bash
-cd frontend
-pip install -r requirements.txt
-streamlit run app.py
+cd frontend-next
+npm install
+cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL=http://localhost:8000
+npm run dev
 ```
-
-Logs will be automatically created in the `logs/` directory with automatic rotation and compression.
+The app runs at http://localhost:3000 (dark theme by default). Add a `brain-example.png` image under `frontend-next/public/` to show an example knowledge brain on the welcome page. For the legacy Streamlit UI: `cd frontend && pip install -r requirements.txt && streamlit run app.py` (port 8501).
 
 ## 🧪 Testing
 
