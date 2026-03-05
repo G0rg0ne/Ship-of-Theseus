@@ -48,13 +48,18 @@ async def get_user_brain(
     """
     user_id = current_user.email or current_user.username
 
-    # 1. Fast path: Redis cache
-    cached = await cache_get(_brain_cache_key(user_id))
-    if cached:
-        return UserBrain(**cached)
-
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
+
+    # 1. Fast path: Redis cache (only trust it if Neo4j still has the Brain node, so we don't
+    #    return a deleted brain after Redis restarts from a persisted snapshot)
+    cached = await cache_get(_brain_cache_key(user_id))
+    if cached:
+        brain_data = neo4j.get_brain_node(user_id)
+        if brain_data is None:
+            await cache_delete(_brain_cache_key(user_id))
+        else:
+            return UserBrain(**cached)
 
     # 2. Permanent path: Brain node in Neo4j
     brain_data = neo4j.get_brain_node(user_id)
