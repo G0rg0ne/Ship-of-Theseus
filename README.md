@@ -38,7 +38,7 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 - 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button saves the graph to Neo4j; nodes are tagged with `user_id` and `document_name`
 - 🧠 **Community Detection / Knowledge Brain**: After every document is added to the knowledge base, Louvain community detection runs automatically (as a background task) across *all* of the user's documents in Neo4j. The result is the user's **Knowledge Brain** — a set of clusters grouping related entities across documents. The brain is displayed in the UI and cached in Redis. Users can also manually re-run detection via "Refresh".
 - 🚀 FastAPI backend with modular architecture
-- 🎨 **Next.js 14** frontend (TypeScript, Tailwind CSS, shadcn/ui): **dark-mode** UI with a modern **welcome page** (split layout: hero + feature list + brain example image placeholder on the left; glassmorphic Sign in / Create account panel on the right); dashboard with PDF upload (progress stepper), **Knowledge Brain** section with metrics, **interactive force-directed graph** of entities/communities, and slide-in community detail panel
+- 🎨 **Next.js 14** frontend (TypeScript, Tailwind CSS, shadcn/ui): **Nautical + Scholarly** dark UI — warm amber/gold accents on deep navy; Crimson Pro serif headings; **welcome page** with asymmetric split: animated **node constellation** canvas (amber/teal particles + connecting lines) and horizontal journey strip (Upload → Extract → Build → Explore) on the left; auth panel with left accent bar on the right; **dashboard** with dot-grid background, anchor branding, accent-top cards; PDF upload (progress stepper), **Knowledge Brain** (metrics, force-directed graph, slide-in community panel)
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
@@ -86,8 +86,8 @@ Ship-of-Theseus/
 │   └── Dockerfile
 ├── frontend-next/               # Next.js 14 frontend (primary UI)
 │   ├── src/
-│   │   ├── app/                 # App Router: page.tsx (auth), dashboard/page.tsx
-│   │   ├── components/          # auth/, upload/, brain/ (BrainGraph, BrainMetrics, CommunityPanel)
+│   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx
+│   │   ├── components/          # auth/, upload/, brain/, NodeConstellation (animated canvas)
 │   │   ├── hooks/               # useAuth, useUpload, useBrain
 │   │   └── lib/                 # api.ts (backend client), utils
 │   ├── package.json
