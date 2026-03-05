@@ -82,9 +82,9 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
     state === "extracting_relationships";
 
   return (
-    <Card>
+    <Card variant="accent">
       <CardHeader>
-        <CardTitle>PDF Document</CardTitle>
+        <CardTitle className="font-heading">PDF Document</CardTitle>
         <CardDescription>
           Upload a PDF to extract entities and relationships into your knowledge graph.
         </CardDescription>

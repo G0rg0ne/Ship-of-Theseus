@@ -64,10 +64,10 @@ export function BrainSection({ token }: BrainSectionProps) {
   };
 
   return (
-    <Card>
+    <Card variant="accent">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle>Knowledge Brain</CardTitle>
+          <CardTitle className="font-heading">Knowledge Brain</CardTitle>
           <CardDescription>
             Your merged knowledge graph and communities across all documents.
           </CardDescription>

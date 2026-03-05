@@ -13,7 +13,7 @@ export function BrainMetrics({ brain, isLoading }: BrainMetricsProps) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
-          <Card key={i}>
+          <Card key={i} variant="accent">
             <CardContent className="p-4">
               <div className="h-4 w-16 animate-pulse rounded bg-muted" />
               <div className="mt-1 h-6 w-8 animate-pulse rounded bg-muted" />
@@ -42,10 +42,10 @@ export function BrainMetrics({ brain, isLoading }: BrainMetricsProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {metrics.map(({ label, value }) => (
-        <Card key={label}>
+        <Card key={label} variant="accent">
           <CardContent className="p-4">
-            <p className="text-sm font-medium text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold">{value}</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className="font-heading text-2xl font-bold text-foreground mt-1">{value}</p>
           </CardContent>
         </Card>
       ))}

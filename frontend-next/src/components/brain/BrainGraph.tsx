@@ -174,12 +174,12 @@ export function BrainGraph({
         }
         nodeColor={nodeColor}
         nodeVal={(n: ForceGraphNode) => 3 + (n.communityId ? 2 : 0)}
-        linkColor="rgba(120,120,120,0.4)"
+        linkColor="rgba(200,170,100,0.25)"
         linkWidth={1}
         onNodeClick={handleNodeClick}
       />
-      <div className="absolute bottom-2 left-2 rounded bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow">
-        <span className="font-medium">Entity types:</span> Person · Org · Location · Key term
+      <div className="absolute bottom-2 left-2 rounded-md border border-border/50 bg-card/95 px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm">
+        <span className="font-medium text-foreground/90">Entity types:</span> Person · Org · Location · Key term
       </div>
     </div>
   );

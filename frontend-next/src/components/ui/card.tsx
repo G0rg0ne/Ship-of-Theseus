@@ -3,8 +3,10 @@ import { cn } from "@/lib/utils";
 
 const cardVariants = {
   default: "rounded-lg border bg-card text-card-foreground shadow-sm",
+  accent:
+    "rounded-lg border bg-card text-card-foreground shadow-sm border-t-2 border-t-primary/60",
   glass:
-    "rounded-xl border border-white/10 bg-white/5 text-card-foreground shadow-2xl backdrop-blur-xl",
+    "rounded-xl border border-amber-500/10 bg-card text-card-foreground shadow-2xl",
 };
 
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
