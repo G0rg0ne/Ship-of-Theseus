@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 220 20% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+    --primary: 220 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 220 20% 20%;
+    --muted: 220 14% 92%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 220 14% 92%;
+    --accent-foreground: 220 20% 20%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 220 70% 45%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 47% 5%;
+    --foreground: 220 14% 96%;
+    --card: 222 35% 10%;
+    --card-foreground: 220 14% 96%;
+    --primary: 238 84% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 30% 14%;
+    --secondary-foreground: 220 14% 96%;
+    --muted: 222 30% 14%;
+    --muted-foreground: 220 10% 58%;
+    --accent: 222 35% 14%;
+    --accent-foreground: 220 14% 96%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 25% 18%;
+    --input: 222 25% 18%;
+    --ring: 238 84% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  /* Smooth scrollbar for dark mode */
+  .dark ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .dark ::-webkit-scrollbar-track {
+    background: hsl(222 35% 8%);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: hsl(222 25% 22%);
+    border-radius: 4px;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: hsl(222 25% 30%);
+  }
+}
+
+@layer components {
+  /* Glassmorphism panel */
+  .glass-panel {
+    @apply rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+      0 25px 50px -12px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Subtle glow for primary elements */
+  .glow-primary {
+    box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.4);
+  }
+  .glow-primary-hover:hover {
+    box-shadow: 0 0 24px -4px hsl(var(--primary) / 0.5);
+  }
+}
+
+@layer utilities {
+  /* Animated gradient mesh background for welcome page */
+  .bg-welcome-gradient {
+    background: linear-gradient(
+        135deg,
+        hsl(222 47% 5%) 0%,
+        hsl(238 45% 8%) 40%,
+        hsl(222 47% 5%) 100%
+      );
+    position: relative;
+    overflow: hidden;
+  }
+  .bg-welcome-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        ellipse 80% 50% at 20% 40%,
+        hsl(238 84% 58% / 0.12) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 80% 60%,
+        hsl(220 70% 55% / 0.08) 0%,
+        transparent 50%
+      );
+    pointer-events: none;
+    animation: gradient-shift 12s ease-in-out infinite;
+  }
+  @keyframes gradient-shift {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.9;
+      transform: scale(1.02);
+    }
+  }
+}
