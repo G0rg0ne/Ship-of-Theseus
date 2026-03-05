@@ -169,7 +169,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 - `DATA_DIR` - Local directory for Docker data (Redis, Neo4j, PostgreSQL); default `.data`. Used by `docker-compose.yml` and the `scripts/ensure-data-dirs.*` scripts.
 - `DATABASE_URL` - PostgreSQL connection URL for user registration/auth (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus`; use `postgres:5432` host when running in Docker)
 - `ALLOWED_ORIGINS` - CORS origins (comma-separated). Default `http://localhost:8501`. For local Next.js dev (port 3000) use e.g. `http://localhost:3000` or `http://localhost:3000,http://localhost:8501`
-- `NEXT_PUBLIC_API_URL` - Backend API base URL for the Next.js frontend (e.g. `http://localhost:8000` when running frontend locally; in Docker the frontend uses `http://backend:8000`)
+- `NEXT_PUBLIC_API_URL` - Backend API base URL for the Next.js frontend (e.g. `http://localhost:8000` when running frontend locally). **In production, this MUST be set to a browser-accessible public URL (for example `https://api.yourdomain.com`) and MUST NOT use Docker-internal hostnames like `http://backend:8000`, because this value is baked into the client-side bundle at build time.**
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
 - `DEBUG` - Debug mode (default: `False`)
 - `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used.

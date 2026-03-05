@@ -81,12 +81,13 @@ services:
       context: ./frontend-next
       dockerfile: Dockerfile
       args:
-        # Public API URL the browser will use (set in .env for prod, e.g. https://api.yourdomain.com)
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
+        # Public API URL the browser will use (must be a browser-accessible URL, e.g. https://api.yourdomain.com)
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     container_name: ship_frontend
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
+      # Passed through for server-side code; client bundle uses the build-time value above.
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     env_file:
       - .env
     depends_on:
