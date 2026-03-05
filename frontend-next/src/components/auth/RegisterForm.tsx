@@ -34,7 +34,7 @@ export function RegisterForm() {
         const apiUrl =
           process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
         setError(
-          `Cannot reach the server. Is the backend running? The app is using: ${apiUrl} — for local dev run: cd backend && uvicorn app.main:app --reload --port 8000`
+          `Cannot reach the server at ${apiUrl}. Please ensure the backend is running and that this URL is reachable from your browser.`
         );
       } else {
         setError(err instanceof Error ? err.message : "Registration failed");
