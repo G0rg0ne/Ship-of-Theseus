@@ -158,6 +158,8 @@ Ship-of-Theseus/
    - Neo4j Browser (optional): http://localhost:7474 (Bolt: localhost:7687)
    - Health check: http://localhost:8000/
 
+   **If you see "Cannot reach the server"**: ensure the backend is running. With Docker, all services start together. For local frontend dev, start the backend first: `cd backend && uvicorn app.main:app --reload --port 8000`. The frontend uses `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`); set it in `.env.local` or `.env` if your API is at a different URL.
+
 ## ⚙️ Environment Variables
 
 See `.env.example` (project root) for a template. **If upgrading from the previous single-user auth:** remove `USERNAME`, `USER_EMAIL`, and `USER_PASSWORD` from your `.env`; user accounts are now stored in PostgreSQL.

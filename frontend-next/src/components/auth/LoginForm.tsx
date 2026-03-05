@@ -26,8 +26,14 @@ export function LoginForm() {
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
-      } else if (err instanceof TypeError && err.message.includes("fetch")) {
-        setError("Cannot reach the server. Is the backend running at the API URL?");
+      } else if (
+        err instanceof TypeError && err.message.includes("fetch")
+      ) {
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        setError(
+          `Cannot reach the server. Is the backend running? The app is using: ${apiUrl} — for local dev run: cd backend && uvicorn app.main:app --reload --port 8000`
+        );
       } else {
         setError(err instanceof Error ? err.message : "Login failed");
       }
