@@ -129,6 +129,11 @@ def cache_key_relationship_job(job_id: str) -> str:
     return f"extraction:relationships:job:{job_id}"
 
 
+def cache_key_community_brain(user_id: str) -> str:
+    """Key for a user's community-detection brain (used by graph and community endpoints)."""
+    return f"community:brain:{user_id}"
+
+
 # Default TTLs (seconds)
 DOCUMENT_TTL = 24 * 60 * 60  # 24 hours
 EXTRACTION_JOB_TTL = 60 * 60  # 1 hour

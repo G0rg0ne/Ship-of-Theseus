@@ -15,7 +15,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.v1.deps import get_current_user
-from app.core.cache import cache_delete, cache_get, cache_set
+from app.core.cache import cache_delete, cache_get, cache_key_community_brain, cache_set
 from app.core.logger import logger
 from app.models.user import User
 from app.schemas.community import UserBrain
@@ -24,10 +24,6 @@ from app.services.neo4j_service import Neo4jService
 router = APIRouter()
 
 BRAIN_CACHE_TTL = 86400  # 24 hours
-
-
-def _brain_cache_key(user_id: str) -> str:
-    return f"community:brain:{user_id}"
 
 
 def get_neo4j_service(request: Request) -> Optional[Neo4jService]:
@@ -53,11 +49,11 @@ async def get_user_brain(
 
     # 1. Fast path: Redis cache (only trust it if Neo4j still has the Brain node, so we don't
     #    return a deleted brain after Redis restarts from a persisted snapshot)
-    cached = await cache_get(_brain_cache_key(user_id))
+    cached = await cache_get(cache_key_community_brain(user_id))
     if cached:
         brain_data = neo4j.get_brain_node(user_id)
         if brain_data is None:
-            await cache_delete(_brain_cache_key(user_id))
+            await cache_delete(cache_key_community_brain(user_id))
         else:
             return UserBrain(**cached)
 
@@ -65,7 +61,7 @@ async def get_user_brain(
     brain_data = neo4j.get_brain_node(user_id)
     if brain_data:
         # Re-warm the cache so subsequent reads hit Redis
-        await cache_set(_brain_cache_key(user_id), brain_data, ttl_seconds=BRAIN_CACHE_TTL)
+        await cache_set(cache_key_community_brain(user_id), brain_data, ttl_seconds=BRAIN_CACHE_TTL)
         return UserBrain(**brain_data)
 
     # 3. Fallback: recompute from entity nodes
@@ -81,7 +77,7 @@ async def get_user_brain(
     brain, communities_raw = build_user_brain(user_id, nodes, edges, doc_count)
     neo4j.save_community_assignments(user_id, communities_raw)
     neo4j.save_brain_node(user_id, brain.model_dump())
-    await cache_set(_brain_cache_key(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
+    await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
     return brain
 
 
@@ -121,7 +117,7 @@ async def trigger_community_detection(
     neo4j.save_brain_node(user_id, brain.model_dump())
 
     # Warm the Redis cache
-    await cache_set(_brain_cache_key(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
+    await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
     return brain
 
 
@@ -141,7 +137,7 @@ async def delete_user_brain(
 
     try:
         neo4j.delete_user_data(user_id)
-        await cache_delete(_brain_cache_key(user_id))
+        await cache_delete(cache_key_community_brain(user_id))
         return {"ok": True, "message": "Brain and all user data deleted"}
     except Exception as e:
         logger.exception("Failed to delete user brain", user_id=user_id, error=str(e))

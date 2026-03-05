@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from app.api.v1.deps import get_current_user
 from app.models.user import User
 from app.schemas.relationships import DocumentGraph
-from app.core.cache import cache_get, cache_key_extraction_job, cache_key_relationship_job, cache_set
+from app.core.cache import cache_get, cache_key_community_brain, cache_key_extraction_job, cache_key_relationship_job, cache_set
 from app.services.neo4j_service import Neo4jService
 
 router = APIRouter()
@@ -91,8 +91,7 @@ async def _background_community_detection(user_id: str, neo4j: Neo4jService) -> 
         neo4j.save_brain_node(user_id, brain.model_dump())
 
         # Also warm the Redis cache so the next read is instant
-        brain_key = f"community:brain:{user_id}"
-        await cache_set(brain_key, brain.model_dump(), ttl_seconds=86400)
+        await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=86400)
         logger.success("Community brain saved and cached", user_id=user_id, communities=brain.community_count)
     except Exception as exc:
         logger.exception("Community detection background task failed", user_id=user_id, error=str(exc))
