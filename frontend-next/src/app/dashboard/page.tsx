@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PdfUpload } from "@/components/upload/PdfUpload";
 import { BrainSection } from "@/components/brain/BrainSection";
+import { ChatSection } from "@/components/chat/ChatSection";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrain } from "@/hooks/useBrain";
 
@@ -91,7 +92,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background bg-dot-grid">
+    <main className="min-h-screen flex flex-col bg-background bg-dot-grid">
       <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div
           className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
@@ -128,39 +129,49 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="container max-w-5xl space-y-12 px-4 py-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="font-heading text-2xl font-semibold text-foreground">
-              {greeting}, {displayName}
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Manage your documents and explore your knowledge graph.
-            </p>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] flex-1 min-h-0 w-full">
+        {/* Left column: upload & brain */}
+        <div className="min-w-0 overflow-auto border-r border-border">
+          <div className="space-y-12 px-6 py-10">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="font-heading text-2xl font-semibold text-foreground">
+                  {greeting}, {displayName}
+                </h1>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Manage your documents and explore your knowledge graph.
+                </p>
+              </div>
+            </div>
+
+            <section className="space-y-4">
+              <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground pl-3 border-l-2 border-primary/70">
+                Upload & process
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-2xl">
+                Upload a PDF to extract entities and relationships, then add the
+                graph to your knowledge base.
+              </p>
+              <PdfUpload token={token} onSaveComplete={handleSaveComplete} />
+            </section>
+
+            <section className="space-y-4">
+              <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground pl-3 border-l-2 border-primary/70">
+                Your knowledge brain
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-2xl">
+                View your merged knowledge graph and communities. Click a node to
+                see its community details.
+              </p>
+              <BrainSection token={token} />
+            </section>
           </div>
         </div>
 
-        <section className="space-y-4">
-          <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground pl-3 border-l-2 border-primary/70">
-            Upload & process
-          </h2>
-          <p className="text-sm text-muted-foreground max-w-2xl">
-            Upload a PDF to extract entities and relationships, then add the
-            graph to your knowledge base.
-          </p>
-          <PdfUpload token={token} onSaveComplete={handleSaveComplete} />
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground pl-3 border-l-2 border-primary/70">
-            Your knowledge brain
-          </h2>
-          <p className="text-sm text-muted-foreground max-w-2xl">
-            View your merged knowledge graph and communities. Click a node to see
-            its community details.
-          </p>
-          <BrainSection token={token} />
-        </section>
+        {/* Right column: chat – flex so input stays at bottom */}
+        <aside className="hidden lg:flex flex-col min-w-0 min-h-0 border-border bg-background/50 px-6 py-10 overflow-hidden">
+          <ChatSection />
+        </aside>
       </div>
     </main>
   );
