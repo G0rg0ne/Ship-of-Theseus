@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,25 @@ function AnchorIcon({ className }: { className?: string }) {
   );
 }
 
+function LogOutIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" x2="9" y1="12" y2="12" />
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { token, user, isLoading: authLoading, logout } = useAuth();
@@ -48,6 +67,21 @@ export default function DashboardPage() {
     mutateBrain();
   };
 
+  const rawName = user?.username ?? user?.email ?? "User";
+  const displayName = rawName.includes("@") ? rawName.split("@")[0] : rawName;
+  const initials =
+    displayName.length >= 2
+      ? displayName.slice(0, 2).toUpperCase()
+      : displayName.slice(0, 1).toUpperCase() || "U";
+
+  const [greeting, setGreeting] = useState("Welcome");
+  useEffect(() => {
+    const hour = new Date().getHours();
+    setGreeting(
+      hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
+    );
+  }, []);
+
   if (authLoading || !token) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background">
@@ -63,7 +97,7 @@ export default function DashboardPage() {
           className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
           aria-hidden
         />
-        <div className="container relative flex h-14 items-center justify-between px-4">
+        <div className="w-full relative flex h-14 items-center justify-between px-4 sm:px-6">
           <Link
             href="/dashboard"
             className="flex items-center gap-2.5 font-heading font-semibold text-foreground transition-opacity hover:opacity-90"
@@ -71,11 +105,23 @@ export default function DashboardPage() {
             <AnchorIcon className="h-6 w-6 text-primary" />
             <span>Ship of Theseus</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              {user?.username ?? user?.email ?? "User"}
-            </span>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                {initials}
+              </span>
+              <span className="text-sm font-medium text-foreground">
+                {displayName}
+              </span>
+            </div>
+            <div className="h-4 w-px bg-border" aria-hidden />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+            >
+              <LogOutIcon className="h-3.5 w-3.5" />
               Log out
             </Button>
           </div>
@@ -83,9 +129,19 @@ export default function DashboardPage() {
       </header>
 
       <div className="container max-w-5xl space-y-12 px-4 py-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-heading text-2xl font-semibold text-foreground">
+              {greeting}, {displayName}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Manage your documents and explore your knowledge graph.
+            </p>
+          </div>
+        </div>
+
         <section className="space-y-4">
-          <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" aria-hidden />
+          <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground pl-3 border-l-2 border-primary/70">
             Upload & process
           </h2>
           <p className="text-sm text-muted-foreground max-w-2xl">
@@ -96,8 +152,7 @@ export default function DashboardPage() {
         </section>
 
         <section className="space-y-4">
-          <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" aria-hidden />
+          <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground pl-3 border-l-2 border-primary/70">
             Your knowledge brain
           </h2>
           <p className="text-sm text-muted-foreground max-w-2xl">
