@@ -82,7 +82,7 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
     state === "extracting_relationships";
 
   return (
-    <Card variant="accent">
+    <Card variant="accent" className="min-w-0">
       <CardHeader>
         <CardTitle className="font-heading">PDF Document</CardTitle>
         <CardDescription>
@@ -105,7 +105,7 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
         )}
 
         {selectedFile && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground truncate" title={selectedFile.name}>
             Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
           </p>
         )}
@@ -132,14 +132,15 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
             {saveError && (
               <p className="text-sm text-destructive">{saveError}</p>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <Button
                 onClick={handleAddToKnowledgeBase}
                 disabled={saveLoading}
+                className="w-full"
               >
                 {saveLoading ? "Saving…" : "Add to Knowledge Base"}
               </Button>
-              <Button variant="outline" onClick={() => reset()}>
+              <Button variant="outline" onClick={() => reset()} className="w-full">
                 Upload another
               </Button>
             </div>
@@ -152,7 +153,7 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
           </p>
         )}
         {state === "error" && (
-          <Button variant="outline" onClick={() => reset()}>
+          <Button variant="outline" onClick={() => reset()} className="w-full">
             Try again
           </Button>
         )}
@@ -162,8 +163,8 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
             <summary className="cursor-pointer hover:text-foreground">
               Clear document and start over
             </summary>
-            <div className="mt-2 flex items-center gap-2">
-              <Button variant="destructive" size="sm" onClick={handleClearDocument}>
+            <div className="mt-2">
+              <Button variant="destructive" size="sm" onClick={handleClearDocument} className="w-full">
                 Clear document
               </Button>
             </div>

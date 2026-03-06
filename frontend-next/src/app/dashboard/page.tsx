@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PdfUpload } from "@/components/upload/PdfUpload";
 import { BrainSection } from "@/components/brain/BrainSection";
 import { ChatSection } from "@/components/chat/ChatSection";
+import { DocumentList } from "@/components/documents/DocumentList";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrain } from "@/hooks/useBrain";
+import * as api from "@/lib/api";
+import type { DocumentListItem } from "@/lib/api";
 
 function AnchorIcon({ className }: { className?: string }) {
   return (
@@ -64,8 +67,29 @@ export default function DashboardPage() {
     router.replace("/");
   };
 
+  const [documents, setDocuments] = useState<DocumentListItem[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+
+  const loadDocuments = useCallback(async () => {
+    if (!token) return;
+    setDocumentsLoading(true);
+    try {
+      const list = await api.listNeo4jDocuments(token);
+      setDocuments(list);
+    } catch {
+      setDocuments([]);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadDocuments();
+  }, [loadDocuments]);
+
   const handleSaveComplete = () => {
     mutateBrain();
+    loadDocuments();
   };
 
   const rawName = user?.username ?? user?.email ?? "User";
@@ -129,48 +153,38 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] flex-1 min-h-0 w-full">
-        {/* Left column: upload & brain */}
-        <div className="min-w-0 overflow-auto border-r border-border">
-          <div className="space-y-12 px-6 py-10">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="font-heading text-2xl font-semibold text-foreground">
-                  {greeting}, {displayName}
-                </h1>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Manage your documents and explore your knowledge graph.
-                </p>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_360px] flex-1 min-h-0 w-full">
+        {/* Left sidebar: greeting, upload, document list */}
+        <aside className="min-w-0 overflow-auto border-r border-border bg-background/50">
+          <div className="flex flex-col gap-6 px-4 py-6">
+            <div>
+              <h1 className="font-heading text-lg font-semibold text-foreground">
+                {greeting}, {displayName}
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Documents & knowledge graph.
+              </p>
             </div>
-
-            <section className="space-y-4">
-              <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground pl-3 border-l-2 border-primary/70">
+            <section className="space-y-2">
+              <h2 className="font-heading text-sm font-semibold tracking-tight text-foreground pl-2 border-l-2 border-primary/70">
                 Upload & process
               </h2>
-              <p className="text-sm text-muted-foreground max-w-2xl">
-                Upload a PDF to extract entities and relationships, then add the
-                graph to your knowledge base.
-              </p>
               <PdfUpload token={token} onSaveComplete={handleSaveComplete} />
             </section>
+            <DocumentList documents={documents} isLoading={documentsLoading} />
+          </div>
+        </aside>
 
-            <section className="space-y-4">
-              <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground pl-3 border-l-2 border-primary/70">
-                Your knowledge brain
-              </h2>
-              <p className="text-sm text-muted-foreground max-w-2xl">
-                View your merged knowledge graph and communities. Click a node to
-                see its community details.
-              </p>
-              <BrainSection token={token} />
-            </section>
+        {/* Center: brain graph */}
+        <div className="min-w-0 overflow-auto border-r border-border">
+          <div className="h-full flex flex-col px-4 py-6">
+            <BrainSection token={token} />
           </div>
         </div>
 
-        {/* Right column: chat – flex so input stays at bottom */}
-        <aside className="hidden lg:flex flex-col min-w-0 min-h-0 border-border bg-background/50 px-6 py-10 overflow-hidden">
-          <ChatSection />
+        {/* Right panel: chat */}
+        <aside className="hidden lg:flex flex-col min-w-0 min-h-0 border-border bg-background/50 overflow-hidden">
+          <ChatSection documents={documents} />
         </aside>
       </div>
     </main>
