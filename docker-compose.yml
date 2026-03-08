@@ -67,6 +67,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Override DATABASE_URL so the app connects to the postgres service (not localhost)
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-shipoftheseus}"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
