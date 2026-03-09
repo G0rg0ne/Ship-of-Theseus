@@ -68,22 +68,23 @@ async def get_user_brain(
         await cache_set(cache_key_community_brain(user_id), brain_data, ttl_seconds=BRAIN_CACHE_TTL)
         return UserBrain(**brain_data)
 
-    # 3. Fallback: recompute from entity nodes
-    nodes, edges = neo4j.get_user_graph(user_id)
+    # 3. Fallback: recompute from entity nodes by running the full brain pipeline.
+    # We only persist a complete brain (with summaries and embeddings), never a partial one.
+    nodes, _ = neo4j.get_user_graph(user_id)
     if not nodes:
         raise HTTPException(
             status_code=404,
             detail="No knowledge brain found. Add documents to the knowledge base first.",
         )
 
-    doc_count = neo4j.get_user_document_count(user_id)
-    from app.services.community_detection_service import build_user_brain
-    brain, flat_for_neo4j, _ = build_user_brain(
-        user_id, nodes, edges, doc_count, hierarchical=True
-    )
-    neo4j.save_community_assignments(user_id, flat_for_neo4j)
-    neo4j.save_brain_node(user_id, brain.model_dump())
-    await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
+    try:
+        brain = await run_full_brain_pipeline_for_user(user_id, neo4j)
+    except NoUserGraphError:
+        # Should not normally occur after the nodes check above, but kept for safety.
+        raise HTTPException(
+            status_code=404,
+            detail="No knowledge brain found. Add documents to the knowledge base first.",
+        )
     return brain
 
 

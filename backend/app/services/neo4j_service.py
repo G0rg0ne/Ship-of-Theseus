@@ -453,6 +453,37 @@ class Neo4jService:
                 "Community vector index creation skipped or failed", error=str(e)
             )
 
+    def get_community_embeddings_and_fingerprints(
+        self,
+        user_id: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Return a mapping of community_id -> {embedding, summary_fingerprint} for a user.
+
+        Used by the brain pipeline to avoid re-embedding unchanged community summaries.
+        """
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                MATCH (c:Community {derived_user_id: $user_id})
+                RETURN c.community_id AS community_id,
+                       c.embedding AS embedding,
+                       c.summary_fingerprint AS summary_fingerprint
+                """,
+                user_id=user_id,
+            )
+            out: Dict[str, Dict[str, Any]] = {}
+            for record in result:
+                cid = record.get("community_id")
+                if not cid:
+                    continue
+                out[cid] = {
+                    "embedding": record.get("embedding"),
+                    "summary_fingerprint": record.get("summary_fingerprint"),
+                }
+            return out
+
     def save_community_nodes(
         self,
         user_id: str,
@@ -472,6 +503,7 @@ class Neo4jService:
                 level = c.get("level") or "leaf"
                 parent = c.get("parent_community_id")
                 summary = c.get("summary") or ""
+                summary_fingerprint = c.get("summary_fingerprint")
                 embedding = c.get("embedding")
                 node_count = c.get("node_count", len(c.get("node_ids", [])))
                 top_entities = c.get("top_entities", [])
@@ -488,6 +520,8 @@ class Neo4jService:
                     "keywords_json": json.dumps(keywords, default=str),
                     "document_sources_json": json.dumps(doc_sources, default=str),
                 }
+                if summary_fingerprint is not None:
+                    props["summary_fingerprint"] = summary_fingerprint
                 if embedding is not None:
                     props["embedding"] = embedding
                 session.run(
@@ -510,6 +544,7 @@ class Neo4jService:
         user_id: str,
         document_name: str,
         embeddings_map: Dict[str, List[float]],
+        fingerprint_map: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Set embedding property on entity nodes for a single document.
@@ -523,19 +558,38 @@ class Neo4jService:
         with driver.session(database=self._database) as session:
             self.ensure_vector_indexes(session)
             for node_id, embedding in embeddings_map.items():
-                session.run(
-                    """
-                    MATCH (n)
-                    WHERE n.user_id = $user_id
-                      AND n.document_name = $document_name
-                      AND n.id = $node_id
-                    SET n:Entity, n.embedding = $embedding
-                    """,
-                    user_id=user_id,
-                    document_name=document_name,
-                    node_id=node_id,
-                    embedding=embedding,
-                )
+                if fingerprint_map is not None:
+                    fingerprint = fingerprint_map.get(node_id)
+                    session.run(
+                        """
+                        MATCH (n)
+                        WHERE n.user_id = $user_id
+                          AND n.document_name = $document_name
+                          AND n.id = $node_id
+                        SET n:Entity,
+                            n.embedding = $embedding,
+                            n.embedding_fingerprint = $fingerprint
+                        """,
+                        user_id=user_id,
+                        document_name=document_name,
+                        node_id=node_id,
+                        embedding=embedding,
+                        fingerprint=fingerprint,
+                    )
+                else:
+                    session.run(
+                        """
+                        MATCH (n)
+                        WHERE n.user_id = $user_id
+                          AND n.document_name = $document_name
+                          AND n.id = $node_id
+                        SET n:Entity, n.embedding = $embedding
+                        """,
+                        user_id=user_id,
+                        document_name=document_name,
+                        node_id=node_id,
+                        embedding=embedding,
+                    )
         logger.success(
             "Entity embeddings saved to Neo4j",
             user_id=user_id,

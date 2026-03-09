@@ -14,6 +14,7 @@ Stages:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from typing import Any, Dict, List, Tuple
 
 from app.core.cache import cache_key_community_brain, cache_set
@@ -21,7 +22,7 @@ from app.core.config import settings
 from app.core.logger import logger
 from app.schemas.community import CommunityLevel, HierarchicalCommunity, UserBrain
 from app.services.community_detection_service import build_user_brain
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import EmbeddingService, entity_to_embed_text
 from app.services.neo4j_service import Neo4jService
 from app.services.summarization_service import SummarizationService
 
@@ -119,8 +120,12 @@ def embed_and_persist_brain(
         brain: Updated UserBrain with communities_by_level populated.
         brain_dict: Dict form of brain (with nested communities_by_level) suitable for caching.
     """
-    # Embedding: entities (Identity Card) then community summaries
     embedding_svc = EmbeddingService(api_key=settings.OPENAI_API_KEY)
+
+    def _entity_fingerprint(node: Dict[str, Any]) -> str:
+        """Stable fingerprint for an entity's Identity Card."""
+        text = entity_to_embed_text(node) or ""
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     # Group entity nodes by document so embeddings are written to the correct
     # document-scoped nodes (id is only guaranteed unique per document).
@@ -131,14 +136,57 @@ def embed_and_persist_brain(
             continue
         nodes_by_document.setdefault(doc_name, []).append(n)
 
+    # Only embed entities whose fingerprint changed compared to what is stored in Neo4j.
     for document_name, doc_nodes in nodes_by_document.items():
-        entity_embeddings = embedding_svc.embed_entities(doc_nodes)
-        neo4j.save_entity_embeddings(user_id, document_name, entity_embeddings)
+        nodes_to_embed: List[Dict[str, Any]] = []
+        fingerprints_by_id: Dict[str, str] = {}
+        for node in doc_nodes:
+            node_id = node.get("id") or node.get("label")
+            if not node_id:
+                continue
+            new_fp = _entity_fingerprint(node)
+            old_fp = node.get("embedding_fingerprint")
+            if old_fp != new_fp:
+                nodes_to_embed.append(node)
+                fingerprints_by_id[node_id] = new_fp
+        if not nodes_to_embed:
+            continue
+        entity_embeddings = embedding_svc.embed_entities(nodes_to_embed)
+        neo4j.save_entity_embeddings(
+            user_id,
+            document_name,
+            entity_embeddings,
+            fingerprints_by_id,
+        )
 
-    summary_texts = [c.get("summary") or "" for c in hierarchical_raw]
-    summary_vectors = embedding_svc.embed_texts(summary_texts)
-    for c, vec in zip(hierarchical_raw, summary_vectors):
-        c["embedding"] = vec
+    # Community summaries: compute text fingerprint and only re-embed changed summaries.
+    # Load existing embeddings + fingerprints from Neo4j so we can reuse unchanged ones.
+    existing_communities = neo4j.get_community_embeddings_and_fingerprints(user_id)
+
+    summary_texts: List[str] = []
+    communities_to_embed: List[Dict[str, Any]] = []
+    for c in hierarchical_raw:
+        summary = c.get("summary") or ""
+        community_id = c.get("community_id") or ""
+        stored = existing_communities.get(community_id, {}) if community_id else {}
+        old_fp = stored.get("summary_fingerprint")
+        new_fp = hashlib.sha256(summary.encode("utf-8")).hexdigest()
+
+        # If fingerprint unchanged and we have a stored embedding, reuse it and skip re-embedding.
+        if old_fp == new_fp and stored.get("embedding") is not None:
+            c["summary_fingerprint"] = old_fp
+            c["embedding"] = stored.get("embedding")
+            continue
+
+        communities_to_embed.append(c)
+        summary_texts.append(summary)
+        c["summary_fingerprint"] = new_fp
+
+    if communities_to_embed:
+        summary_vectors = embedding_svc.embed_texts(summary_texts)
+        for community, vec in zip(communities_to_embed, summary_vectors):
+            community["embedding"] = vec
+
     neo4j.save_community_nodes(user_id, hierarchical_raw)
 
     # Build enriched brain with communities_by_level
