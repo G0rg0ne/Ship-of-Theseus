@@ -99,7 +99,6 @@ services:
       - ship_network
       - caddy_proxy
     healthcheck:
-      # Next.js runs on port 3000 (Streamlit was 8501)
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/"]
       interval: 30s
       timeout: 10s

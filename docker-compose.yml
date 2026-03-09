@@ -25,6 +25,7 @@ services:
       - "${NEO4J_HTTP_PORT:-7474}:7474"
       - "${NEO4J_BOLT_PORT:-7687}:7687"
     environment:
+      # Credentials from .env only (no defaults in compose)
       NEO4J_AUTH: "${NEO4J_USER}/${NEO4J_PASSWORD}"
     volumes:
       - ./data/neo4j:/data
@@ -43,9 +44,10 @@ services:
     container_name: ship_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      POSTGRES_DB: "${POSTGRES_DB:-shipoftheseus}"
+      # From .env only (no password in compose)
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -54,7 +56,7 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-shipoftheseus}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -68,8 +70,10 @@ services:
     env_file:
       - .env
     environment:
-      # Override DATABASE_URL so the app connects to the postgres service (not localhost)
-      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-shipoftheseus}"
+      # Override for Docker network: use service names, credentials from .env
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      REDIS_URL: "redis://redis:6379/0"
+      NEO4J_URI: "bolt://neo4j:7687"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -102,7 +106,7 @@ services:
     env_file:
       - .env
     ports:
-      - "${FRONTEND_PORT:-8501}:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_started

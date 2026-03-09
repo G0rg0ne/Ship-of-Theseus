@@ -1,8 +1,8 @@
 {
   "name": "entity_extraction",
-  "description": "Extract structured entities from text chunks",
-  "version": "1.0",
-  "template": "Extract structured entities from the following text.\n\n{format_instructions}\n\nText:\n{text}",
+  "description": "Extract structured entities from text chunks with Identity Card (name + description)",
+  "version": "1.1",
+  "template": "Extract structured entities from the following text. For every entity (person, organization, location, key term), include a 1–2 sentence \"description\" drawn directly from the surrounding text that explains who or what this entity is (the Identity Card).\n\n{format_instructions}\n\nText:\n{text}",
   "input_variables": ["text"],
   "metadata": {
     "model_suggested": "gpt-4",

@@ -12,6 +12,7 @@ from neo4j import GraphDatabase, Driver
 from app.core.config import settings
 from app.core.logger import logger
 from app.schemas.relationships import DocumentGraph, GraphEdge, GraphNode
+from app.services.embedding_service import EmbeddingService
 
 
 def _type_to_label(entity_type: str) -> str:
@@ -46,6 +47,7 @@ class Neo4jService:
         self._password = password or settings.NEO4J_PASSWORD
         self._database = database or settings.NEO4J_DATABASE
         self._driver: Optional[Driver] = None
+        self._vector_dim_cache: Optional[int] = None
 
     def _get_driver(self) -> Driver:
         """Lazy-init and return the Neo4j driver."""
@@ -124,7 +126,8 @@ class Neo4jService:
                 for k, v in (node.properties or {}).items():
                     if v is not None:
                         props[k] = _serialize_value(v)
-                session.run(f"CREATE (n:{label} $props)", props=props)
+                # :Entity label enables vector index for embedding-based search
+                session.run(f"CREATE (n:{label}:Entity $props)", props=props)
 
             for edge in document_graph.edges:
                 rel_props: Dict[str, Any] = {
@@ -371,17 +374,240 @@ class Neo4jService:
             "CREATE INDEX brain_user_id_idx IF NOT EXISTS FOR (b:Brain) ON (b.user_id)"
         )
 
+    # ------------------------------------------------------------------
+    # Vector indexes and embedding storage (GraphRAG)
+    # ------------------------------------------------------------------
+    def _get_vector_dimensions(self) -> int:
+        """
+        Determine the embedding vector dimension for the active EMBEDDING_MODEL.
+
+        Prefers a static model→dimension map and falls back to probing the
+        EmbeddingService when the model is unknown.
+        """
+        if self._vector_dim_cache is not None:
+            return self._vector_dim_cache
+
+        model_name = getattr(settings, "EMBEDDING_MODEL", "text-embedding-3-small")
+
+        # Known OpenAI embedding dimensions; extend this map as needed.
+        model_dims: Dict[str, int] = {
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+            "text-embedding-ada-002": 1536,
+        }
+
+        dim = model_dims.get(model_name)
+
+        if dim is None:
+            try:
+                embedding_service = EmbeddingService()
+                dim = embedding_service.get_embedding_dimension()
+                logger.info(
+                    "Derived embedding dimension from EmbeddingService",
+                    model=model_name,
+                    dimensions=dim,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to determine embedding dimension from EmbeddingService; falling back to default",
+                    model=model_name,
+                    error=str(e),
+                )
+                # Last-resort default to preserve previous behavior.
+                dim = 1536
+
+        self._vector_dim_cache = dim
+        return dim
+
+    def ensure_vector_indexes(self, session: Any) -> None:
+        """Create vector indexes for Entity.embedding and Community.embedding if they do not exist."""
+        dim = self._get_vector_dimensions()
+        try:
+            session.run(
+                """
+                CREATE VECTOR INDEX entity_embedding_idx IF NOT EXISTS
+                FOR (n:Entity) ON (n.embedding)
+                OPTIONS {indexConfig: {
+                    `vector.dimensions`: $dim,
+                    `vector.similarity_function`: 'cosine'
+                }}
+                """,
+                dim=dim,
+            )
+        except Exception as e:
+            logger.warning("Entity vector index creation skipped or failed", error=str(e))
+        try:
+            session.run(
+                """
+                CREATE VECTOR INDEX community_summary_embedding_idx IF NOT EXISTS
+                FOR (c:Community) ON (c.embedding)
+                OPTIONS {indexConfig: {
+                    `vector.dimensions`: $dim,
+                    `vector.similarity_function`: 'cosine'
+                }}
+                """,
+                dim=dim,
+            )
+        except Exception as e:
+            logger.warning(
+                "Community vector index creation skipped or failed", error=str(e)
+            )
+
+    def get_community_embeddings_and_fingerprints(
+        self,
+        user_id: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Return a mapping of community_id -> {embedding, summary_fingerprint} for a user.
+
+        Used by the brain pipeline to avoid re-embedding unchanged community summaries.
+        """
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                MATCH (c:Community {derived_user_id: $user_id})
+                RETURN c.community_id AS community_id,
+                       c.embedding AS embedding,
+                       c.summary_fingerprint AS summary_fingerprint
+                """,
+                user_id=user_id,
+            )
+            out: Dict[str, Dict[str, Any]] = {}
+            for record in result:
+                cid = record.get("community_id")
+                if not cid:
+                    continue
+                out[cid] = {
+                    "embedding": record.get("embedding"),
+                    "summary_fingerprint": record.get("summary_fingerprint"),
+                }
+            return out
+
+    def save_community_nodes(
+        self,
+        user_id: str,
+        communities: List[Dict[str, Any]],
+    ) -> None:
+        """
+        MERGE :Community nodes derived from a user's graph.
+
+        Each community has community_id, level, parent_community_id, derived_user_id,
+        summary, and optionally embedding (list of floats).
+        """
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            self.ensure_vector_indexes(session)
+            for c in communities:
+                cid = c.get("community_id") or ""
+                level = c.get("level") or "leaf"
+                parent = c.get("parent_community_id")
+                summary = c.get("summary") or ""
+                summary_fingerprint = c.get("summary_fingerprint")
+                embedding = c.get("embedding")
+                node_count = c.get("node_count", len(c.get("node_ids", [])))
+                top_entities = c.get("top_entities", [])
+                keywords = c.get("keywords", [])
+                doc_sources = c.get("document_sources", [])
+                props: Dict[str, Any] = {
+                    "derived_user_id": user_id,
+                    "community_id": cid,
+                    "level": level,
+                    "parent_community_id": parent or "",
+                    "summary": summary,
+                    "node_count": node_count,
+                    "top_entities_json": json.dumps(top_entities, default=str),
+                    "keywords_json": json.dumps(keywords, default=str),
+                    "document_sources_json": json.dumps(doc_sources, default=str),
+                }
+                if summary_fingerprint is not None:
+                    props["summary_fingerprint"] = summary_fingerprint
+                if embedding is not None:
+                    props["embedding"] = embedding
+                session.run(
+                    """
+                    MERGE (c:Community {community_id: $community_id, derived_user_id: $derived_user_id})
+                    SET c += $props
+                    """,
+                    community_id=cid,
+                    derived_user_id=user_id,
+                    props=props,
+                )
+        logger.success(
+            "Community nodes saved to Neo4j",
+            user_id=user_id,
+            communities=len(communities),
+        )
+
+    def save_entity_embeddings(
+        self,
+        user_id: str,
+        document_name: str,
+        embeddings_map: Dict[str, List[float]],
+        fingerprint_map: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """
+        Set embedding property on entity nodes for a single document.
+
+        Adds :Entity label if missing.
+        embeddings_map: node_id -> list of floats (vector) scoped to document_name.
+        """
+        if not embeddings_map:
+            return
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            self.ensure_vector_indexes(session)
+            for node_id, embedding in embeddings_map.items():
+                if fingerprint_map is not None:
+                    fingerprint = fingerprint_map.get(node_id)
+                    session.run(
+                        """
+                        MATCH (n)
+                        WHERE n.user_id = $user_id
+                          AND n.document_name = $document_name
+                          AND n.id = $node_id
+                        SET n:Entity,
+                            n.embedding = $embedding,
+                            n.embedding_fingerprint = $fingerprint
+                        """,
+                        user_id=user_id,
+                        document_name=document_name,
+                        node_id=node_id,
+                        embedding=embedding,
+                        fingerprint=fingerprint,
+                    )
+                else:
+                    session.run(
+                        """
+                        MATCH (n)
+                        WHERE n.user_id = $user_id
+                          AND n.document_name = $document_name
+                          AND n.id = $node_id
+                        SET n:Entity, n.embedding = $embedding
+                        """,
+                        user_id=user_id,
+                        document_name=document_name,
+                        node_id=node_id,
+                        embedding=embedding,
+                    )
+        logger.success(
+            "Entity embeddings saved to Neo4j",
+            user_id=user_id,
+            count=len(embeddings_map),
+        )
+
     def save_brain_node(self, user_id: str, brain_dict: Dict[str, Any]) -> None:
         """
         MERGE a :Brain node for the user in Neo4j, storing the full brain summary.
 
-        The communities list is serialized to JSON so it survives Neo4j's property
-        type constraints (no nested objects).  Call this after every community
+        The communities list and communities_by_level are serialized to JSON so they
+        survive Neo4j's property type constraints. Call this after every community
         detection run so the brain is permanently persisted and survives Redis TTL
         expiry or cache flushes.
         """
         driver = self._get_driver()
         communities_raw = brain_dict.get("communities", [])
+        communities_by_level = brain_dict.get("communities_by_level")
         props: Dict[str, Any] = {
             "user_id": user_id,
             "document_count": brain_dict.get("document_count", 0),
@@ -392,6 +618,11 @@ class Neo4jService:
             "status": brain_dict.get("status", "ready"),
             "communities_json": json.dumps(communities_raw, default=str),
         }
+        if communities_by_level is not None:
+            props["communities_by_level_json"] = json.dumps(
+                [c if isinstance(c, dict) else getattr(c, "model_dump", lambda: c)() for c in communities_by_level],
+                default=str,
+            )
         with driver.session(database=self._database) as session:
             self._ensure_brain_index(session)
             session.run(
@@ -422,10 +653,19 @@ class Neo4jService:
                 return None
             props = dict(record["b"])
             communities_json = props.pop("communities_json", "[]")
+            communities_by_level_json = props.pop("communities_by_level_json", None)
             try:
                 communities = json.loads(communities_json)
             except Exception:
                 communities = []
+            try:
+                communities_by_level = (
+                    json.loads(communities_by_level_json)
+                    if communities_by_level_json
+                    else None
+                )
+            except Exception:
+                communities_by_level = None
             return {
                 "user_id": props.get("user_id", user_id),
                 "document_count": props.get("document_count", 0),
@@ -435,12 +675,13 @@ class Neo4jService:
                 "last_updated": props.get("last_updated", ""),
                 "status": props.get("status", "ready"),
                 "communities": communities,
+                "communities_by_level": communities_by_level,
             }
 
     def delete_user_data(self, user_id: str) -> None:
         """
         Permanently delete all Neo4j data for the user: entity nodes, relationships,
-        and the Brain node. Used for "Clear Brain" / start from scratch.
+        Community nodes, and the Brain node. Used for "Clear Brain" / start from scratch.
         """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
@@ -449,7 +690,7 @@ class Neo4jService:
                 user_id=user_id,
             )
             session.run(
-                "MATCH (b:Brain {user_id: $user_id}) DETACH DELETE b",
+                "MATCH (c:Community {derived_user_id: $user_id}) DETACH DELETE c",
                 user_id=user_id,
             )
         logger.info("User data deleted from Neo4j", user_id=user_id)

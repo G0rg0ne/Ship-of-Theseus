@@ -2,8 +2,8 @@
 Community detection endpoints.
 
 GET  /api/community/brain   – Return the current user's knowledge brain.
-POST /api/community/detect  – Manually trigger community detection for the
-                               current user (runs synchronously, returns brain).
+POST /api/community/detect  – Manually trigger community detection (full GraphRAG
+                               pipeline: hierarchical → summarization → embedding → save).
 
 Read priority for GET /brain:
   1. Redis cache  (fastest)
@@ -20,6 +20,10 @@ from app.core.logger import logger
 from app.models.user import User
 from app.schemas.community import UserBrain
 from app.services.neo4j_service import Neo4jService
+from app.services.brain_pipeline_service import (
+    NoUserGraphError,
+    run_full_brain_pipeline_for_user,
+)
 
 router = APIRouter()
 
@@ -64,21 +68,25 @@ async def get_user_brain(
         await cache_set(cache_key_community_brain(user_id), brain_data, ttl_seconds=BRAIN_CACHE_TTL)
         return UserBrain(**brain_data)
 
-    # 3. Fallback: recompute from entity nodes
-    nodes, edges = neo4j.get_user_graph(user_id)
+    # 3. Fallback: recompute from entity nodes by running the full brain pipeline.
+    # We only persist a complete brain (with summaries and embeddings), never a partial one.
+    nodes, _ = neo4j.get_user_graph(user_id)
     if not nodes:
         raise HTTPException(
             status_code=404,
             detail="No knowledge brain found. Add documents to the knowledge base first.",
         )
 
-    doc_count = neo4j.get_user_document_count(user_id)
-    from app.services.community_detection_service import build_user_brain
-    brain, communities_raw = build_user_brain(user_id, nodes, edges, doc_count)
-    neo4j.save_community_assignments(user_id, communities_raw)
-    neo4j.save_brain_node(user_id, brain.model_dump())
-    await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
+    try:
+        brain = await run_full_brain_pipeline_for_user(user_id, neo4j)
+    except NoUserGraphError:
+        # Should not normally occur after the nodes check above, but kept for safety.
+        raise HTTPException(
+            status_code=404,
+            detail="No knowledge brain found. Add documents to the knowledge base first.",
+        )
     return brain
+
 
 
 @router.post("/detect", response_model=UserBrain)
@@ -87,37 +95,26 @@ async def trigger_community_detection(
     neo4j: Optional[Neo4jService] = Depends(get_neo4j_service),
 ):
     """
-    Manually trigger community detection for the current user.
+    Manually trigger the full GraphRAG pipeline for the current user.
 
-    Loads all documents from Neo4j, runs Louvain community detection,
-    writes community assignments back to entity nodes, persists the Brain
-    node in Neo4j, warms the Redis cache, and returns the brain.
+    Runs hierarchical community detection (Leaf → Mid → Root), LLM summarization
+    for every community at every level, entity and summary embedding with
+    text-embedding-3-small, then persists assignments, community nodes, and
+    embeddings to Neo4j. Returns the enriched brain with communities_by_level.
     """
     user_id = current_user.email or current_user.username
 
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
 
-    logger.info("Manual community detection triggered", user_id=user_id)
-    nodes, edges = neo4j.get_user_graph(user_id)
-    if not nodes:
+    logger.info("Full GraphRAG pipeline triggered", user_id=user_id)
+    try:
+        brain = await run_full_brain_pipeline_for_user(user_id, neo4j)
+    except NoUserGraphError:
         raise HTTPException(
             status_code=404,
             detail="No nodes found in Neo4j. Add documents to the knowledge base first.",
         )
-
-    doc_count = neo4j.get_user_document_count(user_id)
-    from app.services.community_detection_service import build_user_brain
-    brain, communities_raw = build_user_brain(user_id, nodes, edges, doc_count)
-
-    # Write community_id onto every entity node
-    neo4j.save_community_assignments(user_id, communities_raw)
-
-    # Permanently persist the Brain node in Neo4j
-    neo4j.save_brain_node(user_id, brain.model_dump())
-
-    # Warm the Redis cache
-    await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
     return brain
 
 

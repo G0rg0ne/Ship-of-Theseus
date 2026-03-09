@@ -8,6 +8,7 @@ import { PdfUpload } from "@/components/upload/PdfUpload";
 import { BrainSection } from "@/components/brain/BrainSection";
 import { ChatSection } from "@/components/chat/ChatSection";
 import { DocumentList } from "@/components/documents/DocumentList";
+import { DocumentGraphView } from "@/components/upload/DocumentGraphView";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrain } from "@/hooks/useBrain";
 import * as api from "@/lib/api";
@@ -69,6 +70,9 @@ export default function DashboardPage() {
 
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<DocumentListItem | null>(null);
+  const [selectedDocumentGraph, setSelectedDocumentGraph] = useState<api.DocumentGraph | null>(null);
+  const [centerTab, setCenterTab] = useState<"document" | "brain">("brain");
 
   const loadDocuments = useCallback(async () => {
     if (!token) return;
@@ -91,6 +95,21 @@ export default function DashboardPage() {
     mutateBrain();
     loadDocuments();
   };
+
+  const handleSelectDocument = useCallback(
+    async (doc: DocumentListItem) => {
+      if (!token) return;
+      setSelectedDocument(doc);
+      setCenterTab("document");
+      try {
+        const g = await api.getGraphFromNeo4j(doc.document_name, token);
+        setSelectedDocumentGraph(g);
+      } catch {
+        setSelectedDocumentGraph(null);
+      }
+    },
+    [token]
+  );
 
   const rawName = user?.username ?? user?.email ?? "User";
   const displayName = rawName.includes("@") ? rawName.split("@")[0] : rawName;
@@ -153,7 +172,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_360px] flex-1 min-h-0 w-full">
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_380px] flex-1 min-h-0 w-full">
         {/* Left sidebar: greeting, upload, document list */}
         <aside className="min-w-0 overflow-auto border-r border-border bg-background/50">
           <div className="flex flex-col gap-6 px-4 py-6">
@@ -171,14 +190,59 @@ export default function DashboardPage() {
               </h2>
               <PdfUpload token={token} onSaveComplete={handleSaveComplete} />
             </section>
-            <DocumentList documents={documents} isLoading={documentsLoading} />
+            <DocumentList
+              documents={documents}
+              isLoading={documentsLoading}
+              onSelect={handleSelectDocument}
+              selectedDocumentName={selectedDocument?.document_name ?? null}
+            />
           </div>
         </aside>
 
-        {/* Center: brain graph */}
+        {/* Center: document graph vs brain graph */}
         <div className="min-w-0 overflow-auto border-r border-border">
-          <div className="h-full flex flex-col px-4 py-6">
-            <BrainSection token={token} />
+          <div className="h-full flex flex-col px-4 py-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-1 rounded-full border border-border bg-muted/40 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setCenterTab("document")}
+                  className={[
+                    "px-2.5 py-1 rounded-full transition-colors",
+                    centerTab === "document"
+                      ? "bg-background text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  Document graph
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCenterTab("brain")}
+                  className={[
+                    "px-2.5 py-1 rounded-full transition-colors",
+                    centerTab === "brain"
+                      ? "bg-background text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  Brain graph
+                </button>
+              </div>
+            </div>
+
+            {centerTab === "document" ? (
+              <DocumentGraphView graph={selectedDocumentGraph} communities={null} />
+            ) : (
+              <BrainSection
+                token={token}
+                onBrainCleared={() => {
+                  setDocuments([]);
+                  setSelectedDocument(null);
+                  setSelectedDocumentGraph(null);
+                }}
+              />
+            )}
           </div>
         </div>
 

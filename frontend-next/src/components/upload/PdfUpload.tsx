@@ -22,11 +22,11 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
   const {
     state,
     progress,
-    jobId,
     graph,
     error,
     selectedFile,
     uploadAndProcess,
+    addToBrain,
     reset,
     setError,
   } = useUpload(token);
@@ -52,20 +52,6 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
     inputRef.current?.click();
   };
 
-  const handleAddToKnowledgeBase = async () => {
-    if (!jobId || !token) return;
-    setSaveError(null);
-    setSaveLoading(true);
-    try {
-      await api.saveGraphToNeo4j(jobId, token);
-      onSaveComplete?.();
-    } catch (e) {
-      setSaveError(e instanceof api.ApiError ? e.message : "Failed to save.");
-    } finally {
-      setSaveLoading(false);
-    }
-  };
-
   const handleClearDocument = async () => {
     try {
       await api.clearCurrentDocument(token);
@@ -76,10 +62,35 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
     }
   };
 
+  const handleAddToBrain = async () => {
+    try {
+      setSaveError(null);
+      setSaveLoading(true);
+      // Persist the graph to Neo4j and run the full GraphRAG pipeline.
+      await addToBrain();
+      if (onSaveComplete) {
+        await Promise.resolve(onSaveComplete());
+      }
+      reset({ keepGraph: true });
+    } catch (err) {
+      setSaveError(
+        err instanceof Error
+          ? err.message
+          : "Failed to refresh brain. Please try again."
+      );
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
   const isProcessing: boolean =
     state === "uploading" ||
     state === "extracting_entities" ||
-    state === "extracting_relationships";
+    state === "extracting_relationships" ||
+    state === "saving_graph" ||
+    state === "detecting_communities" ||
+    state === "summarizing" ||
+    state === "embedding";
 
   return (
     <Card variant="accent" className="min-w-0">
@@ -113,6 +124,7 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
         {isProcessing && (
           <div className="rounded-md border bg-muted/50 p-4">
             <ProcessingSteps
+              state={state}
               progress={progress}
               entityCount={state === "done" ? graph?.entity_count : undefined}
               relationshipCount={
@@ -122,10 +134,11 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
           </div>
         )}
 
-        {state === "done" && graph && (
+        {state === "preview" && graph && (
           <div className="space-y-2">
             <ProcessingSteps
-              progress={null}
+              state={state}
+              progress={progress}
               entityCount={graph.entity_count}
               relationshipCount={graph.relationship_count}
             />
@@ -134,11 +147,11 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
             )}
             <div className="flex flex-col gap-2">
               <Button
-                onClick={handleAddToKnowledgeBase}
+                onClick={handleAddToBrain}
                 disabled={saveLoading}
                 className="w-full"
               >
-                {saveLoading ? "Saving…" : "Add to Knowledge Base"}
+                {saveLoading ? "Refreshing brain…" : "Add to Brain"}
               </Button>
               <Button variant="outline" onClick={() => reset()} className="w-full">
                 Upload another

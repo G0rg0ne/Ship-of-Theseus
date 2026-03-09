@@ -2,13 +2,20 @@
 Application configuration settings.
 """
 from typing import List, Optional
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+DEFAULT_ALLOWED_ORIGINS: List[str] = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
 
 def _parse_origins(value: str) -> List[str]:
     """Parse comma-separated origins string into a list."""
     if not value or not value.strip():
-        return ["http://localhost:8501"]
+        return DEFAULT_ALLOWED_ORIGINS
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
@@ -25,8 +32,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # CORS - stored as string from env (e.g. "http://localhost:8501,http://localhost:3000")
-    ALLOWED_ORIGINS: str = "http://localhost:8501,http://localhost:3000,http://127.0.0.1:8501,http://127.0.0.1:3000"
+    # CORS - stored as string from env (e.g. "http://localhost:3000,http://localhost:8000")
+    ALLOWED_ORIGINS: str = ",".join(DEFAULT_ALLOWED_ORIGINS)
     
     @property
     def allowed_origins_list(self) -> List[str]:
@@ -36,8 +43,19 @@ class Settings(BaseSettings):
     # Database (PostgreSQL) - used for user registration/auth
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus"
 
-    # Debug - optional with default
+    # Debug - optional with default; empty env value is treated as False
     DEBUG: bool = False
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def coerce_debug(cls, v: object) -> bool:
+        if v is None or v == "":
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in ("true", "1", "yes")
+        return bool(v)
     
     # Redis (optional; in-memory fallback when not set)
     REDIS_URL: Optional[str] = None
@@ -56,6 +74,10 @@ class Settings(BaseSettings):
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "password123"
     NEO4J_DATABASE: str = "neo4j"
+
+    # GraphRAG: community summarization and embedding
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    COMMUNITY_SUMMARIZATION_MODEL: str = "gpt-4o-mini"
 
     class Config:
         case_sensitive = True

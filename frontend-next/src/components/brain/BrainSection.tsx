@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrainMetrics } from "./BrainMetrics";
@@ -12,17 +12,22 @@ import type { CommunityInfo } from "@/lib/api";
 
 interface BrainSectionProps {
   token: string;
+  onBrainCleared?: () => void;
 }
 
-export function BrainSection({ token }: BrainSectionProps) {
-  const { brain, isLoading, refresh, remove, mutate } = useBrain(token);
+export function BrainSection({ token, onBrainCleared }: BrainSectionProps) {
+  const { brain, isLoading, refresh, remove } = useBrain(token);
   const [highlightedCommunityId, setHighlightedCommunityId] = useState<string | null>(null);
   const [panelCommunity, setPanelCommunity] = useState<CommunityInfo | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [graphData, setGraphData] = useState<{ documents: api.DocumentListItem[]; graphs: api.DocumentGraph[] } | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
 
-  const loadGraphData = async () => {
+  const loadGraphData = useCallback(async () => {
+    if (!token || !brain) {
+      setGraphData(null);
+      return;
+    }
     setGraphLoading(true);
     try {
       const documents = await api.listNeo4jDocuments(token);
@@ -41,7 +46,15 @@ export function BrainSection({ token }: BrainSectionProps) {
     } finally {
       setGraphLoading(false);
     }
-  };
+  }, [token, brain]);
+
+  useEffect(() => {
+    if (!brain) {
+      setGraphData(null);
+      return;
+    }
+    void loadGraphData();
+  }, [brain, loadGraphData]);
 
   const graphInput: GraphDataInput | null = useMemo(() => {
     if (!brain || !graphData) return null;
@@ -63,6 +76,15 @@ export function BrainSection({ token }: BrainSectionProps) {
     await loadGraphData();
   };
 
+  const handleClearBrain = async () => {
+    await remove();
+    setGraphData(null);
+    setHighlightedCommunityId(null);
+    setPanelCommunity(null);
+    setPanelOpen(false);
+    onBrainCleared?.();
+  };
+
   return (
     <Card variant="accent">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -73,14 +95,6 @@ export function BrainSection({ token }: BrainSectionProps) {
           </CardDescription>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadGraphData}
-            disabled={graphLoading || !brain}
-          >
-            {graphLoading ? "Loading…" : "Load graph"}
-          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -96,6 +110,9 @@ export function BrainSection({ token }: BrainSectionProps) {
         {brain && (
           <div className="space-y-2">
             <h3 className="text-sm font-medium">Graph</h3>
+            {graphLoading && (
+              <p className="text-xs text-muted-foreground">Loading graph data…</p>
+            )}
             <BrainGraph
               input={graphInput}
               highlightedCommunityId={highlightedCommunityId}
@@ -111,7 +128,7 @@ export function BrainSection({ token }: BrainSectionProps) {
             <Button
               variant="destructive"
               size="sm"
-              onClick={remove}
+              onClick={handleClearBrain}
               disabled={!brain || isLoading}
             >
               Delete brain and all documents

@@ -11,10 +11,13 @@ As I continue building this project, you'll find below an overview of the featur
 
 The project follows a **Graph RAG** (Graph Retrieval-Augmented Generation) design:
 
-- **Indexing phase:** Source documents are chunked (e.g. with a recursive text splitter), then an LLM extracts entities and relationships to build a knowledge graph. Community detection and a hierarchical structure (Root / Low / High levels) organize the graph; an LLM generates community summaries, which are embedded and stored in a vector database.
-- **Query phase:** A user query selects a community level, retrieves relevant community summaries from the vector database, and combines them into a final response.
+- **Entity extraction:** For each entity (person, organization, location, key term) the LLM extracts a **description** from the surrounding text, forming an "Identity Card" (name + description) used later for embedding-based search.
+- **Structural analysis (hierarchical phase):** Louvain community detection groups nodes into **leaf** communities; a meta-graph of leaf clusters is built and Louvain runs again to form **mid** and **root** levels (Leaf → Mid → Root tree).
+- **Summarization:** An LLM writes a comprehensive report for every community at every level (prompt: `backend/app/prompts/community_summary.json`).
+- **Vectorization (embedding phase):** Entity Identity Cards and community summaries are embedded with **text-embedding-3-small**; vectors are stored in Neo4j vector indexes for **local search** (entity-level) and **global search** (theme-level).
+- **Query phase:** A user query can target entity embeddings (specific facts) or community summary embeddings (high-level themes); results are combined into a final response.
 
-LLMs drive extraction, community detection, hierarchy building, and summary generation; the vector store holds the community summaries for retrieval.
+LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds both the graph and the vector indexes.
 ### Example: Knowledge Graph Visualization
 
 ![Example of the knowledge graph extracted from one document](assets/graph_exmp.png)
@@ -34,14 +37,26 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 - 📄 PDF document upload and text extraction
 - 🔍 **Knowledge graph extraction**: "Process Document" runs entity then relationship extraction; shows entity + relationship counts. If extraction fails or times out, the user sees a clear error and a **Try again** option.
 - 🔗 Relationship extraction (auto-triggered after entities); constrained to extracted entities only; graph-ready output (nodes + edges)
-- 📦 Redis cache (documents, extraction jobs, relationship jobs, community brain); in-memory fallback when Redis is not set
-- 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button saves the graph to Neo4j; nodes are tagged with `user_id` and `document_name`
-- 🧠 **Community Detection / Knowledge Brain**: After every document is added to the knowledge base, Louvain community detection runs automatically (as a background task) across *all* of the user's documents in Neo4j. The result is the user's **Knowledge Brain** — a set of clusters grouping related entities across documents. The brain is displayed in the UI and cached in Redis. Users can also manually re-run detection via "Refresh".
+- 📦 Redis cache (documents, extraction jobs, relationship jobs, community brain); in-memory fallback when Redis is not set or when Redis is unavailable, with per-key in-memory fallback on Redis misses
+- 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document. After processing, the user first sees a **per‑document graph preview** (with entity + relationship counts and community colouring when the pipeline has finished) and can then choose to keep it in the brain. Nodes are tagged with `user_id` and `document_name`. Entity embeddings and community summary embeddings are **fingerprint-aware**: a stable hash of each entity's Identity Card and each community's summary text is stored alongside the embedding so re-running the pipeline only re-embeds items whose content actually changed, avoiding unnecessary OpenAI calls.
+- 🧠 **Community Detection / Knowledge Brain (GraphRAG):** Saving a document graph now automatically triggers the **full GraphRAG pipeline** in the background: hierarchical community detection (Leaf → Mid → Root), LLM summarization per community, and entity + summary embedding with **text-embedding-3-small**. Pipeline progress is tracked in Redis and surfaced in the UI (community detection → summarization → embedding). The merged knowledge brain across all documents is stored in Neo4j and cached in Redis with `communities_by_level` summaries. Derived `:Community` nodes in Neo4j are keyed by `community_id` and tagged with `derived_user_id` so they remain separate from the per-user source graph queried via `user_id`, and entity embeddings are written to nodes scoped by `(user_id, document_name, id)` so entities with the same id in different documents remain isolated. Refreshing the brain view in the dashboard now uses a **read-only** fetch of the existing brain state instead of re-running the full pipeline on demand.
 - 🚀 FastAPI backend with modular architecture
 - 🎨 **Next.js 14** frontend (TypeScript, Tailwind CSS, shadcn/ui): **Nautical + Scholarly** dark UI — warm amber/gold accents on deep navy; Crimson Pro serif headings; **welcome page** with asymmetric split: animated **node constellation** canvas (amber/teal particles + connecting lines) and horizontal journey strip (Upload → Extract → Build → Explore) on the left; auth panel with left accent bar on the right; **dashboard** with dot-grid background, anchor branding; **3-panel layout**: left sidebar (upload + document list), center (**Knowledge Brain** — metrics, force-directed graph, slide-in community panel), right panel (**Ask your brain** chat with document-context badges and message input; bot backend not yet wired)
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
+
+### Frontend UX Notes
+
+- The multi-stage processing stepper in the upload flow now shows only the upload and extraction stages as completed while the UI is in the `preview` state, and marks all stages as completed only once the backend brain pipeline has finished and the UI reaches the `done` state, matching the 100% progress indicator.
+- After entity and relationship extraction complete, the upload panel moves into a `preview` state that shows a per-document graph preview. Clicking **Add to Brain** from this state saves the graph to Neo4j and runs the full GraphRAG pipeline; when the pipeline finishes, the dashboard brain metrics/graph refresh and the upload panel returns to the idle state.
+- When you navigate to the authenticated dashboard (or after a successful **Add to Brain**), the **Knowledge Brain** graph now loads automatically as soon as a brain exists; there is no longer a separate "Load graph" button. The **Refresh** action in the brain panel simply re-fetches the latest persisted brain and document graphs rather than re-running community detection.
+ - The upload hook waits for the enriched per-document graph to be loaded from Neo4j before completing the **Add to Brain** action, so the preview state is not overwritten by stale graph data after the panel has been reset. This is implemented in a way that is safe with React 18 automatic batching, ensuring the final enrichment fetch is applied before the upload state is reset.
+- While the long-running brain pipeline is starting (e.g. `saving_graph`, `detecting_communities`, `summarizing`, `embedding`) but before the first backend poll has populated numeric progress, the processing stepper shows a contextual status message (\"Saving graph to knowledge base…\", \"Starting brain pipeline…\", etc.) instead of an empty header with a 0% bar.
+
+### Backend Pipeline Notes
+
+- The full GraphRAG brain pipeline (hierarchical community detection, summarization, embedding, brain persistence, and cache warming) is implemented once in a shared service (`brain_pipeline_service`) and reused by both the manual trigger endpoint and the background job started after saving a document graph, avoiding drift between the two code paths.
 
 ## 📁 Project Structure
 
@@ -56,8 +71,8 @@ Ship-of-Theseus/
 │   │   │       │   ├── auth.py
 │   │   │       │   ├── documents.py
 │   │   │       │   ├── entities.py   # Entity extraction (parallel, progress)
-│   │   │       │   ├── graph.py     # Neo4j graph persistence; triggers community detection on save
-│   │   │       │   └── community.py # Community detection / knowledge brain endpoints
+│   │   │       │   ├── graph.py     # Neo4j graph persistence; triggers full GraphRAG pipeline on save + pipeline status
+│   │   │       │   └── community.py # Community detection / knowledge brain endpoints (manual full pipeline trigger)
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
@@ -66,46 +81,42 @@ Ship-of-Theseus/
 │   │   │   ├── security.py     # JWT & password utilities
 │   │   │   └── logger.py        # Loguru logging configuration
 │   │   ├── prompts/             # LLM prompt templates (JSON)
-│   │   │   ├── entity_extraction.json
-│   │   │   └── relationship_extraction.json
+│   │   │   ├── entity_extraction.json   # Entities + Identity Card (description)
+│   │   │   ├── relationship_extraction.json
+│   │   │   └── community_summary.json   # Per-community report (leaf/mid/root)
 │   │   ├── models/              # ORM models
 │   │   │   └── user.py          # User model (PostgreSQL)
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   ├── auth.py
 │   │   │   ├── entities.py
 │   │   │   ├── relationships.py
-│   │   │   └── community.py     # UserBrain & CommunityInfo schemas
+│   │   │   └── community.py     # UserBrain, CommunityInfo, HierarchicalCommunity, CommunityLevel
 │   │   ├── services/            # Business logic
 │   │   │   ├── user_service.py
 │   │   │   ├── entity_extraction_service.py
 │   │   │   ├── relationship_extraction_service.py
-│   │   │   ├── neo4j_service.py   # Neo4j graph persistence + user-scoped graph queries
-│   │   │   └── community_detection_service.py  # Louvain community detection
+│   │   │   ├── neo4j_service.py   # Graph persistence, vector indexes, community nodes, entity embeddings
+│   │   │   ├── community_detection_service.py  # Hierarchical Louvain (leaf/mid/root)
+│   │   │   ├── summarization_service.py       # LLM community summaries
+│   │   │   └── embedding_service.py           # text-embedding-3-small (entities + summaries)
 │   │   └── db/                  # PostgreSQL (async engine, session, init_tables)
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend-next/               # Next.js 14 frontend (primary UI)
 │   ├── src/
 │   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx
-│   │   ├── components/          # auth/, upload/, brain/, NodeConstellation (animated canvas)
-│   │   ├── hooks/               # useAuth, useUpload, useBrain
+│   │   ├── components/          # auth/, upload/, brain/, documents/, NodeConstellation (animated canvas)
+│   │   ├── hooks/               # useAuth, useUpload, useBrain (upload hook drives extraction + preview and then, on Add to Brain, saves + runs the background brain pipeline)
 │   │   └── lib/                 # api.ts (backend client), utils
 │   ├── package.json
 │   ├── next.config.ts
 │   └── Dockerfile
-├── frontend/                    # Legacy Streamlit app (reference)
-│   ├── app.py
-│   ├── components/
-│   ├── services/api_client.py
-│   └── ...
 ├── shared/                      # Shared utilities (ready for expansion)
 ├── tests/                       # Test files
-│   ├── backend/
-│   └── frontend/
+│   └── backend/
 ├── logs/                        # Application logs (auto-generated)
 │   ├── app_YYYY-MM-DD.log      # Backend daily logs
-│   ├── errors_YYYY-MM-DD.log   # Backend error logs
-│   └── frontend_YYYY-MM-DD.log # Frontend daily logs
+│   └── errors_YYYY-MM-DD.log   # Backend error logs
 ├── scripts/                     # Helper scripts
 │   ├── ensure-data-dirs.ps1    # Create .data dirs (PowerShell)
 │   └── ensure-data-dirs.sh     # Create .data dirs (Bash/WSL)
@@ -153,7 +164,7 @@ Ship-of-Theseus/
    ```
 
 4. **Access the application**:
-   - Frontend: http://localhost:8501
+   - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
    - Neo4j Browser (optional): http://localhost:7474 (Bolt: localhost:7687)
    - Health check: http://localhost:8000/
@@ -170,21 +181,24 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 ### Optional Variables (have defaults):
 - `DATA_DIR` - Local directory for Docker data (Redis, Neo4j, PostgreSQL); default `.data`. Used by `docker-compose.yml` and the `scripts/ensure-data-dirs.*` scripts.
 - `DATABASE_URL` - PostgreSQL connection URL for user registration/auth (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus`). **When using Docker Compose, this is overridden automatically** so the backend connects to the `postgres` service; no need to set it in `.env` for Docker.
-- `ALLOWED_ORIGINS` - CORS origins (comma-separated). Default `http://localhost:8501`. For local Next.js dev (port 3000) use e.g. `http://localhost:3000` or `http://localhost:3000,http://localhost:8501`
+- `ALLOWED_ORIGINS` - CORS origins (comma-separated). Default `http://localhost:3000,http://127.0.0.1:3000`. For additional origins add them comma-separated (e.g. `http://localhost:3000,http://localhost:8000`)
 - `NEXT_PUBLIC_API_URL` - Backend API base URL for the Next.js frontend (e.g. `http://localhost:8000` when running frontend locally). **In production, this MUST be set to a browser-accessible public URL (for example `https://api.yourdomain.com`) and MUST NOT use Docker-internal hostnames like `http://backend:8000`, because this value is baked into the client-side bundle at build time.**
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
 - `DEBUG` - Debug mode (default: `False`)
-- `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used.
+- `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used. **When using Docker Compose, this is overridden to `redis://redis:6379/0`** so the backend reaches the Redis service.
 - `OPENAI_API_KEY` - Required for entity extraction; if unset, extraction endpoints return 503.
 - `ENTITY_EXTRACTION_MODEL` - LLM model for extraction (default: `gpt-4o-mini`)
 - `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel (default: `5`)
 - `RELATIONSHIP_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel for relationship extraction (default: `5`)
 - `AUTO_EXTRACT_RELATIONSHIPS` - Auto-trigger relationship extraction after entity extraction (default: `true`)
 - **Neo4j** (optional; graph persistence disabled if unavailable):
-  - `NEO4J_URI` - Bolt URL. **IMPORTANT**: Use `bolt://neo4j:7687` when running in Docker (uses service name), or `bolt://localhost:7687` for local development
-  - `NEO4J_USER` - Neo4j username (default: `neo4j`; must match `docker-compose.yml`)
-  - `NEO4J_PASSWORD` - Neo4j password (default: `password123`; must match `docker-compose.yml`)
+  - `NEO4J_URI` - Bolt URL. **When using Docker Compose, this is overridden to `bolt://neo4j:7687`**; use `bolt://localhost:7687` for local dev.
+  - `NEO4J_USER` - Neo4j username (set in `.env`; no default in compose)
+  - `NEO4J_PASSWORD` - Neo4j password (set in `.env` only; no password appears in docker-compose)
   - `NEO4J_DATABASE` - Database name (default: `neo4j`)
+- **GraphRAG (community summarization and embedding):**
+  - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`). Neo4j vector index dimensions are derived from this model at runtime so index configuration always matches the active embedding model.
+  - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)
 
 ## 🏃 Running Locally (Development)
 
@@ -204,17 +218,13 @@ npm install
 cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL=http://localhost:8000
 npm run dev
 ```
-The app runs at http://localhost:3000 (dark theme by default). Add a `brain-example.png` image under `frontend-next/public/` to show an example knowledge brain on the welcome page. For the legacy Streamlit UI: `cd frontend && pip install -r requirements.txt && streamlit run app.py` (port 8501).
+The app runs at http://localhost:3000 (dark theme by default). Add a `brain-example.png` image under `frontend-next/public/` to show an example knowledge brain on the welcome page.
 
 ## 🧪 Testing
 
 ```bash
 # Backend tests
 cd backend
-pytest
-
-# Frontend tests
-cd frontend
 pytest
 
 # Run with coverage
@@ -248,16 +258,17 @@ pytest --cov=app --cov-report=html
 - `GET /entities/extract/graph/{job_id}` - Get complete graph for an entity job (uses entity job_id; returns graph when relationship extraction has completed) (requires auth)
 
 ### Graph Persistence (Neo4j) Endpoints
-- `POST /graph/save/{job_id}` - Save extracted graph to Neo4j and trigger community detection (uses entity job_id; requires auth)
+- `POST /graph/save/{job_id}` - Save extracted graph to Neo4j and trigger the **full GraphRAG pipeline** in the background (community detection → summarization → embedding). Returns `{ ok, message, document_name, pipeline_job_id }` (uses entity job_id; requires auth).
 - `GET /graph/list` - List documents in Neo4j with node/edge counts (requires auth)
 - `GET /graph/{document_name}` - Get graph from Neo4j by document name (requires auth)
 - `DELETE /graph/{document_name}` - Delete document graph from Neo4j (requires auth)
 - `GET /graph/health` - Neo4j connectivity check (requires auth)
+- `GET /graph/pipeline/status/{pipeline_job_id}` - Get status of a long‑running graph pipeline job; returns the current `step` (`community_detection`, `summarizing`, `embedding`), `step_index`, `total_steps`, `status` (`running|done|failed`), and `message` (requires auth)
 
-### Community Detection / Knowledge Brain Endpoints
-- `GET /community/brain` - Get current user's knowledge brain (community detection results cached in Redis; requires auth)
-- `POST /community/detect` - Manually trigger community detection for the current user (requires auth)
-- `DELETE /community/brain` - Permanently delete the user's brain and all document graphs (requires auth)
+### Community Detection / Knowledge Brain Endpoints (GraphRAG)
+- `GET /community/brain` - Get current user's knowledge brain (includes `communities_by_level` with summaries when full pipeline has run; cache: Redis → Neo4j Brain node → recompute fallback; requires auth). The dashboard **Refresh** button uses this read-only endpoint to update what is shown to the user.
+- `POST /community/detect` - Run full GraphRAG pipeline: hierarchical detection (Leaf → Mid → Root), LLM summarization per community, entity and summary embedding (text-embedding-3-small), persist to Neo4j (assignments, community nodes, vector indexes); returns enriched brain (requires auth). This endpoint is available for manual or programmatic re-computation but is no longer called from the main dashboard UI.
+- `DELETE /community/brain` - Permanently delete the user's brain, community nodes, and all document graphs from Neo4j; clear Redis cache (requires auth)
 
 ## 🐳 Docker, Redis, PostgreSQL, and Neo4j
 
@@ -269,7 +280,7 @@ With Docker Compose, the backend uses **Redis** for caching, **PostgreSQL** for 
 
 - **Redis** runs as service `redis`; data is stored **locally** in `.data/redis_data/` (or `$DATA_DIR/redis_data` if set). The backend gets `REDIS_URL=redis://redis:6379/0` when using Docker. For local runs, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
 - **PostgreSQL** runs as service `postgres` (PostgreSQL 16). Data is stored **locally** in `.data/postgres_data/` (or `$DATA_DIR/postgres_data` if set). The backend connects via `DATABASE_URL` (injected by docker-compose). Users register and log in via the frontend; credentials are stored in PostgreSQL.
-- **Neo4j** runs as service `neo4j`. Data is stored **locally** in `.data/neo4j_data/` (or `$DATA_DIR/neo4j_data` if set). **IMPORTANT**: Set `NEO4J_URI=bolt://neo4j:7687` in `.env` when using Docker (not `localhost`). The authentication credentials (`NEO4J_USER` and `NEO4J_PASSWORD`) must match those in `docker-compose.yml` (default: `neo4j/password123`). Each document's graph is stored separately (isolated by document filename). Use the "Add to Knowledge Base" button in the PDF section to save the extracted graph to Neo4j.
+- **Neo4j** runs as service `neo4j`. Data is stored **locally** in `.data/neo4j_data/` (or `$DATA_DIR/neo4j_data` if set). **IMPORTANT**: Set `NEO4J_URI=bolt://neo4j:7687` in `.env` when using Docker (not `localhost`). The authentication credentials (`NEO4J_USER` and `NEO4J_PASSWORD`) must match those in `docker-compose.yml` (default: `neo4j/password123`). Each document's graph is stored separately (isolated by document filename). Use the **Add to Brain** action in the PDF upload panel to save the extracted graph to Neo4j and start the brain pipeline.
 
 Create the local data directories before first run (Setup step 2), or run `scripts/ensure-data-dirs.ps1` (PowerShell) or `scripts/ensure-data-dirs.sh` (Bash/WSL).
 
@@ -325,7 +336,7 @@ docker-compose down -v
 The project follows a modular architecture:
 
 - **Backend**: FastAPI with clean separation of concerns (routes, services, schemas, core)
-- **Frontend**: Streamlit 1.41+ with wide layout, upload/processing state machine, knowledge-graph explorer (search/filters/sort, context in expanders, Entities tab, JSON download), optional Knowledge Base browser for saved graphs
+- **Frontend**: Next.js 14 (TypeScript, Tailwind CSS, shadcn/ui) with a dark nautical UI; welcome page with animated node constellation, auth panel, and a 3-panel dashboard (upload/documents, Knowledge Brain force-directed graph, Ask your brain chat)
 - **Shared**: Common utilities that can be used by both services
 - **Tests**: Comprehensive test coverage for both services
 - **Logging**: Loguru-based logging with automatic rotation, compression, and colored console output
@@ -345,21 +356,12 @@ logger.error("Error message")
 logger.exception("Exception with traceback")
 ```
 
-**Frontend logging:**
-```python
-from utils.logger import logger
-
-logger.info("User action")
-logger.success("Operation completed")
-```
-
 **Features:**
 - Automatic file rotation at midnight
 - Log retention: 30 days (general), 90 days (errors)
 - Automatic compression of old logs
 - Colored console output for better readability
 - Thread-safe logging
-- Separate log files for backend and frontend
 - Debug level logging in files, INFO level in console
 
 See [.cursor/rules/README.mdc](.cursor/rules/README.mdc) for detailed development guidelines and project standards.

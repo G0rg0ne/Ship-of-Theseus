@@ -30,8 +30,14 @@ def _deserialize(raw: Optional[str]) -> Any:
     return json.loads(raw)
 
 
+def _clear_redis_client():
+    """Clear the Redis client so next call will reconnect or use in-memory."""
+    global _redis_client
+    _redis_client = None
+
+
 async def _get_redis():
-    """Get or create async Redis client."""
+    """Get or create async Redis client. Returns None if Redis is unavailable."""
     global _redis_client
     if _redis_client is not None:
         return _redis_client
@@ -39,12 +45,13 @@ async def _get_redis():
         return None
     try:
         from redis.asyncio import Redis
-        _redis_client = Redis.from_url(
+        client = Redis.from_url(
             settings.REDIS_URL,
             encoding="utf-8",
             decode_responses=True,
         )
-        await _redis_client.ping()
+        await client.ping()
+        _redis_client = client
         logger.success("Redis cache connected", url=settings.REDIS_URL.split("@")[-1])
         return _redis_client
     except Exception as e:
@@ -56,15 +63,17 @@ async def cache_get(key: str) -> Any:
     """
     Get a value from cache by key.
     Returns None if key is missing or expired.
+    Falls back to in-memory store when Redis is unavailable or fails.
     """
     redis = await _get_redis()
     if redis:
         try:
             raw = await redis.get(key)
-            return _deserialize(raw)
+            if raw is not None:
+                return _deserialize(raw)
         except Exception as e:
-            logger.error("Redis get failed", key=key, error=str(e))
-            return None
+            logger.warning("Redis get failed, using in-memory fallback", key=key, error=str(e))
+            _clear_redis_client()
 
     async with _memory_lock:
         entry = _memory_store.get(key)
@@ -80,6 +89,7 @@ async def cache_get(key: str) -> Any:
 async def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
     """
     Set a value in cache with optional TTL.
+    Falls back to in-memory store when Redis is unavailable or fails.
     """
     raw = _serialize(value)
     redis = await _get_redis()
@@ -89,9 +99,10 @@ async def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> 
                 await redis.setex(key, ttl_seconds, raw)
             else:
                 await redis.set(key, raw)
+            return
         except Exception as e:
-            logger.error("Redis set failed", key=key, error=str(e))
-        return
+            logger.warning("Redis set failed, using in-memory fallback", key=key, error=str(e))
+            _clear_redis_client()
 
     async with _memory_lock:
         expiry = None
@@ -101,14 +112,14 @@ async def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> 
 
 
 async def cache_delete(key: str) -> None:
-    """Delete a key from cache."""
+    """Delete a key from cache. Falls back to in-memory when Redis fails."""
     redis = await _get_redis()
     if redis:
         try:
             await redis.delete(key)
         except Exception as e:
-            logger.error("Redis delete failed", key=key, error=str(e))
-        return
+            logger.warning("Redis delete failed, using in-memory fallback", key=key, error=str(e))
+            _clear_redis_client()
 
     async with _memory_lock:
         _memory_store.pop(key, None)
@@ -132,6 +143,11 @@ def cache_key_relationship_job(job_id: str) -> str:
 def cache_key_community_brain(user_id: str) -> str:
     """Key for a user's community-detection brain (used by graph and community endpoints)."""
     return f"community:brain:{user_id}"
+
+
+def cache_key_pipeline_job(pipeline_job_id: str) -> str:
+    """Key for a long-running graph pipeline job (community detection, summarization, embedding)."""
+    return f"pipeline:job:{pipeline_job_id}"
 
 
 # Default TTLs (seconds)
