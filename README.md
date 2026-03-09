@@ -49,6 +49,7 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 ### Frontend UX Notes
 
 - The multi-stage processing stepper in the upload flow now correctly shows all stages as completed when the backend pipeline has finished and the UI is in the `preview` or `done` state, matching the 100% progress indicator.
+- After the background save + brain pipeline complete, clicking **Add to Brain** on the preview card simply refreshes the brain metrics/graph and then returns the upload panel to the idle state; saving to Neo4j has already happened automatically during processing.
 
 ### Backend Pipeline Notes
 

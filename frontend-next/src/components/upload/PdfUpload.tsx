@@ -61,6 +61,31 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
     }
   };
 
+  const handleAddToBrain = async () => {
+    // Saving to Neo4j and running the brain pipeline have already completed by the time
+    // we reach the preview state. This handler refreshes the brain view in the dashboard
+    // and then returns the upload panel to the idle state.
+    if (!onSaveComplete) {
+      reset();
+      return;
+    }
+
+    try {
+      setSaveError(null);
+      setSaveLoading(true);
+      await Promise.resolve(onSaveComplete());
+      reset();
+    } catch (err) {
+      setSaveError(
+        err instanceof Error
+          ? err.message
+          : "Failed to refresh brain. Please try again."
+      );
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
   const isProcessing: boolean =
     state === "uploading" ||
     state === "extracting_entities" ||
@@ -125,11 +150,11 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
             )}
             <div className="flex flex-col gap-2">
               <Button
-                onClick={onSaveComplete}
+                onClick={handleAddToBrain}
                 disabled={saveLoading}
                 className="w-full"
               >
-                Add to Brain
+                {saveLoading ? "Refreshing brain…" : "Add to Brain"}
               </Button>
               <Button variant="outline" onClick={() => reset()} className="w-full">
                 Upload another
