@@ -6,10 +6,16 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
+DEFAULT_ALLOWED_ORIGINS: List[str] = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+
 def _parse_origins(value: str) -> List[str]:
     """Parse comma-separated origins string into a list."""
     if not value or not value.strip():
-        return ["http://localhost:3000"]
+        return DEFAULT_ALLOWED_ORIGINS
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
@@ -27,7 +33,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # CORS - stored as string from env (e.g. "http://localhost:3000,http://localhost:8000")
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    ALLOWED_ORIGINS: str = ",".join(DEFAULT_ALLOWED_ORIGINS)
     
     @property
     def allowed_origins_list(self) -> List[str]:
