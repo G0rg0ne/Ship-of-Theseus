@@ -49,7 +49,7 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 ### Frontend UX Notes
 
 - The multi-stage processing stepper in the upload flow now correctly shows all stages as completed when the backend pipeline has finished and the UI is in the `preview` or `done` state, matching the 100% progress indicator.
-- After the background save + brain pipeline complete, clicking **Add to Brain** on the preview card simply refreshes the brain metrics/graph and then returns the upload panel to the idle state; saving to Neo4j has already happened automatically during processing.
+- After entity and relationship extraction complete, the upload panel moves into a `preview` state that shows a per-document graph preview. Clicking **Add to Brain** from this state saves the graph to Neo4j and runs the full GraphRAG pipeline; when the pipeline finishes, the dashboard brain metrics/graph refresh and the upload panel returns to the idle state.
 
 ### Backend Pipeline Notes
 
@@ -103,7 +103,7 @@ Ship-of-Theseus/
 │   ├── src/
 │   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx
 │   │   ├── components/          # auth/, upload/, brain/, documents/, NodeConstellation (animated canvas)
-│   │   ├── hooks/               # useAuth, useUpload, useBrain (upload hook now drives extraction + save + background brain pipeline)
+│   │   ├── hooks/               # useAuth, useUpload, useBrain (upload hook drives extraction + preview and then, on Add to Brain, saves + runs the background brain pipeline)
 │   │   └── lib/                 # api.ts (backend client), utils
 │   ├── package.json
 │   ├── next.config.ts
@@ -277,7 +277,7 @@ With Docker Compose, the backend uses **Redis** for caching, **PostgreSQL** for 
 
 - **Redis** runs as service `redis`; data is stored **locally** in `.data/redis_data/` (or `$DATA_DIR/redis_data` if set). The backend gets `REDIS_URL=redis://redis:6379/0` when using Docker. For local runs, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
 - **PostgreSQL** runs as service `postgres` (PostgreSQL 16). Data is stored **locally** in `.data/postgres_data/` (or `$DATA_DIR/postgres_data` if set). The backend connects via `DATABASE_URL` (injected by docker-compose). Users register and log in via the frontend; credentials are stored in PostgreSQL.
-- **Neo4j** runs as service `neo4j`. Data is stored **locally** in `.data/neo4j_data/` (or `$DATA_DIR/neo4j_data` if set). **IMPORTANT**: Set `NEO4J_URI=bolt://neo4j:7687` in `.env` when using Docker (not `localhost`). The authentication credentials (`NEO4J_USER` and `NEO4J_PASSWORD`) must match those in `docker-compose.yml` (default: `neo4j/password123`). Each document's graph is stored separately (isolated by document filename). Use the "Add to Knowledge Base" button in the PDF section to save the extracted graph to Neo4j.
+- **Neo4j** runs as service `neo4j`. Data is stored **locally** in `.data/neo4j_data/` (or `$DATA_DIR/neo4j_data` if set). **IMPORTANT**: Set `NEO4J_URI=bolt://neo4j:7687` in `.env` when using Docker (not `localhost`). The authentication credentials (`NEO4J_USER` and `NEO4J_PASSWORD`) must match those in `docker-compose.yml` (default: `neo4j/password123`). Each document's graph is stored separately (isolated by document filename). Use the **Add to Brain** action in the PDF upload panel to save the extracted graph to Neo4j and start the brain pipeline.
 
 Create the local data directories before first run (Setup step 2), or run `scripts/ensure-data-dirs.ps1` (PowerShell) or `scripts/ensure-data-dirs.sh` (Bash/WSL).
 

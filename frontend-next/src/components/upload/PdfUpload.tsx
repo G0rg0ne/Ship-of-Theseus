@@ -26,6 +26,7 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
     error,
     selectedFile,
     uploadAndProcess,
+    addToBrain,
     reset,
     setError,
   } = useUpload(token);
@@ -62,18 +63,14 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
   };
 
   const handleAddToBrain = async () => {
-    // Saving to Neo4j and running the brain pipeline have already completed by the time
-    // we reach the preview state. This handler refreshes the brain view in the dashboard
-    // and then returns the upload panel to the idle state.
-    if (!onSaveComplete) {
-      reset();
-      return;
-    }
-
     try {
       setSaveError(null);
       setSaveLoading(true);
-      await Promise.resolve(onSaveComplete());
+      // Persist the graph to Neo4j and run the full GraphRAG pipeline.
+      await addToBrain();
+      if (onSaveComplete) {
+        await Promise.resolve(onSaveComplete());
+      }
       reset();
     } catch (err) {
       setSaveError(
