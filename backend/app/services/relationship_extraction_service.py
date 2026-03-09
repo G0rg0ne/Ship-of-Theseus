@@ -82,8 +82,9 @@ class RelationshipExtractionService:
             if rel.source in valid_entities and rel.target in valid_entities:
                 valid.append(rel)
             else:
-                logger.warning(
-                    "Invalid relationship filtered",
+                # Expected: LLM often returns source/target not in entity set; we keep graph consistent
+                logger.debug(
+                    "Relationship skipped (source or target not in entity set)",
                     source=rel.source,
                     target=rel.target,
                     relation_type=rel.relation_type,

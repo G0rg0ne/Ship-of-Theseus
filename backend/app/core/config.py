@@ -2,6 +2,7 @@
 Application configuration settings.
 """
 from typing import List, Optional
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -36,8 +37,19 @@ class Settings(BaseSettings):
     # Database (PostgreSQL) - used for user registration/auth
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus"
 
-    # Debug - optional with default
+    # Debug - optional with default; empty env value is treated as False
     DEBUG: bool = False
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def coerce_debug(cls, v: object) -> bool:
+        if v is None or v == "":
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in ("true", "1", "yes")
+        return bool(v)
     
     # Redis (optional; in-memory fallback when not set)
     REDIS_URL: Optional[str] = None

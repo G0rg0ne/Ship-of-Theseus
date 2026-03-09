@@ -167,16 +167,16 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 - `NEXT_PUBLIC_API_URL` - Backend API base URL for the Next.js frontend (e.g. `http://localhost:8000` when running frontend locally). **In production, this MUST be set to a browser-accessible public URL (for example `https://api.yourdomain.com`) and MUST NOT use Docker-internal hostnames like `http://backend:8000`, because this value is baked into the client-side bundle at build time.**
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
 - `DEBUG` - Debug mode (default: `False`)
-- `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used.
+- `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used. **When using Docker Compose, this is overridden to `redis://redis:6379/0`** so the backend reaches the Redis service.
 - `OPENAI_API_KEY` - Required for entity extraction; if unset, extraction endpoints return 503.
 - `ENTITY_EXTRACTION_MODEL` - LLM model for extraction (default: `gpt-4o-mini`)
 - `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel (default: `5`)
 - `RELATIONSHIP_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel for relationship extraction (default: `5`)
 - `AUTO_EXTRACT_RELATIONSHIPS` - Auto-trigger relationship extraction after entity extraction (default: `true`)
 - **Neo4j** (optional; graph persistence disabled if unavailable):
-  - `NEO4J_URI` - Bolt URL. **IMPORTANT**: Use `bolt://neo4j:7687` when running in Docker (uses service name), or `bolt://localhost:7687` for local development
-  - `NEO4J_USER` - Neo4j username (default: `neo4j`; must match `docker-compose.yml`)
-  - `NEO4J_PASSWORD` - Neo4j password (default: `password123`; must match `docker-compose.yml`)
+  - `NEO4J_URI` - Bolt URL. **When using Docker Compose, this is overridden to `bolt://neo4j:7687`**; use `bolt://localhost:7687` for local dev.
+  - `NEO4J_USER` - Neo4j username (set in `.env`; no default in compose)
+  - `NEO4J_PASSWORD` - Neo4j password (set in `.env` only; no password appears in docker-compose)
   - `NEO4J_DATABASE` - Database name (default: `neo4j`)
 
 ## 🏃 Running Locally (Development)
