@@ -159,6 +159,13 @@ export function useUpload(token: string | null) {
                         },
                       }
                     );
+
+                    // The background pipeline may not have written status yet; treat 404 as transient.
+                    if (res.status === 404) {
+                      setTimeout(pollPipeline, POLL_INTERVAL_MS);
+                      return;
+                    }
+
                     if (!res.ok) {
                       throw new Error("Failed to fetch pipeline status.");
                     }

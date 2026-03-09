@@ -324,6 +324,10 @@ def _build_meta_graph_for_mids(
     G = nx.Graph()
     for i in range(len(mid_partition)):
         G.add_node(i)
+
+    # Use sets for O(1) membership checks instead of lists
+    leaf_sets = [set(leaf) for leaf in leaf_partition]
+
     for edge in edges:
         src, tgt = edge.get("source"), edge.get("target")
         if not src or not tgt:
@@ -331,14 +335,14 @@ def _build_meta_graph_for_mids(
         mid_src, mid_tgt = None, None
         for mi, leaf_indices in enumerate(mid_partition):
             for li in leaf_indices:
-                if src in leaf_partition[li]:
+                if src in leaf_sets[li]:
                     mid_src = mi
                     break
             if mid_src is not None:
                 break
         for mi, leaf_indices in enumerate(mid_partition):
             for li in leaf_indices:
-                if tgt in leaf_partition[li]:
+                if tgt in leaf_sets[li]:
                     mid_tgt = mi
                     break
             if mid_tgt is not None:
