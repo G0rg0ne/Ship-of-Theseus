@@ -120,6 +120,9 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
         user_id=user_id,
         pipeline_job_id=pipeline_job_id,
     )
+    # Heavy stages (summarization, embedding, Neo4j writes) are offloaded to a
+    # worker thread so we don't block the main event loop.
+    import asyncio
     total_steps = 3  # community_detection, summarizing, embedding
     try:
         # Step 1: community detection and assignments
@@ -166,7 +169,14 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             user_id=user_id,
         )
 
-        summarize_hierarchy(hierarchical_raw, node_map, edges)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            summarize_hierarchy,
+            hierarchical_raw,
+            node_map,
+            edges,
+        )
 
         # Step 3: embeddings (entities + community summaries)
         await _set_pipeline_status(
@@ -179,8 +189,14 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             user_id=user_id,
         )
 
-        brain, brain_dict = embed_and_persist_brain(
-            user_id, neo4j, brain, hierarchical_raw, nodes
+        brain, brain_dict = await loop.run_in_executor(
+            None,
+            embed_and_persist_brain,
+            user_id,
+            neo4j,
+            brain,
+            hierarchical_raw,
+            nodes,
         )
 
         # Also warm the Redis cache so the next read is instant

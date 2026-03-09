@@ -13,6 +13,7 @@ Stages:
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List, Tuple
 
 from app.core.cache import cache_key_community_brain, cache_set
@@ -46,19 +47,32 @@ async def detect_communities_and_assign(
         edges: All relationships for the user.
         node_map: node_id -> node dict lookup.
     """
-    nodes, edges = neo4j.get_user_graph(user_id)
+    loop = asyncio.get_running_loop()
+
+    nodes, edges = await loop.run_in_executor(None, neo4j.get_user_graph, user_id)
     if not nodes:
         logger.info("No nodes found in Neo4j for user", user_id=user_id)
         raise NoUserGraphError("No nodes found in Neo4j for this user")
 
-    doc_count = neo4j.get_user_document_count(user_id)
+    doc_count = await loop.run_in_executor(None, neo4j.get_user_document_count, user_id)
 
-    brain, flat_for_neo4j, hierarchical_raw = build_user_brain(
-        user_id, nodes, edges, doc_count, hierarchical=True
+    brain, flat_for_neo4j, hierarchical_raw = await loop.run_in_executor(
+        None,
+        build_user_brain,
+        user_id,
+        nodes,
+        edges,
+        doc_count,
+        True,
     )
 
     # Write community_id onto every entity node (leaf-level only)
-    neo4j.save_community_assignments(user_id, flat_for_neo4j)
+    await loop.run_in_executor(
+        None,
+        neo4j.save_community_assignments,
+        user_id,
+        flat_for_neo4j,
+    )
 
     node_map: Dict[str, Dict[str, Any]] = {
         n.get("id") or n.get("label", ""): n
@@ -168,9 +182,23 @@ async def run_full_brain_pipeline_for_user(
     brain, hierarchical_raw, nodes, edges, node_map = await detect_communities_and_assign(
         user_id, neo4j
     )
-    summarize_hierarchy(hierarchical_raw, node_map, edges)
-    brain, brain_dict = embed_and_persist_brain(
-        user_id, neo4j, brain, hierarchical_raw, nodes
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(
+        None,
+        summarize_hierarchy,
+        hierarchical_raw,
+        node_map,
+        edges,
+    )
+    brain, brain_dict = await loop.run_in_executor(
+        None,
+        embed_and_persist_brain,
+        user_id,
+        neo4j,
+        brain,
+        hierarchical_raw,
+        nodes,
     )
     await warm_brain_cache(user_id, brain_dict)
     return brain
