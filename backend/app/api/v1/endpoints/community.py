@@ -2,24 +2,27 @@
 Community detection endpoints.
 
 GET  /api/community/brain   – Return the current user's knowledge brain.
-POST /api/community/detect  – Manually trigger community detection for the
-                               current user (runs synchronously, returns brain).
+POST /api/community/detect  – Manually trigger community detection (full GraphRAG
+                               pipeline: hierarchical → summarization → embedding → save).
 
 Read priority for GET /brain:
   1. Redis cache  (fastest)
   2. Neo4j Brain node  (permanent, survives cache expiry)
   3. Recompute from entity nodes  (fallback if no brain stored yet)
 """
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.v1.deps import get_current_user
 from app.core.cache import cache_delete, cache_get, cache_key_community_brain, cache_set
+from app.core.config import settings
 from app.core.logger import logger
 from app.models.user import User
-from app.schemas.community import UserBrain
+from app.schemas.community import CommunityLevel, HierarchicalCommunity, UserBrain
+from app.services.embedding_service import EmbeddingService
 from app.services.neo4j_service import Neo4jService
+from app.services.summarization_service import SummarizationService
 
 router = APIRouter()
 
@@ -74,11 +77,29 @@ async def get_user_brain(
 
     doc_count = neo4j.get_user_document_count(user_id)
     from app.services.community_detection_service import build_user_brain
-    brain, communities_raw = build_user_brain(user_id, nodes, edges, doc_count)
-    neo4j.save_community_assignments(user_id, communities_raw)
+    brain, flat_for_neo4j, _ = build_user_brain(
+        user_id, nodes, edges, doc_count, hierarchical=True
+    )
+    neo4j.save_community_assignments(user_id, flat_for_neo4j)
     neo4j.save_brain_node(user_id, brain.model_dump())
     await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
     return brain
+
+
+def _nodes_and_edges_for_community(
+    community: Dict[str, Any],
+    node_map: Dict[str, Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Return (nodes, edges) for a community given its node_ids."""
+    node_ids = set(community.get("node_ids") or [])
+    community_nodes = [node_map[nid] for nid in node_ids if nid in node_map]
+    community_edges = [
+        e
+        for e in edges
+        if e.get("source") in node_ids and e.get("target") in node_ids
+    ]
+    return community_nodes, community_edges
 
 
 @router.post("/detect", response_model=UserBrain)
@@ -87,18 +108,19 @@ async def trigger_community_detection(
     neo4j: Optional[Neo4jService] = Depends(get_neo4j_service),
 ):
     """
-    Manually trigger community detection for the current user.
+    Manually trigger the full GraphRAG pipeline for the current user.
 
-    Loads all documents from Neo4j, runs Louvain community detection,
-    writes community assignments back to entity nodes, persists the Brain
-    node in Neo4j, warms the Redis cache, and returns the brain.
+    Runs hierarchical community detection (Leaf → Mid → Root), LLM summarization
+    for every community at every level, entity and summary embedding with
+    text-embedding-3-small, then persists assignments, community nodes, and
+    embeddings to Neo4j. Returns the enriched brain with communities_by_level.
     """
     user_id = current_user.email or current_user.username
 
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
 
-    logger.info("Manual community detection triggered", user_id=user_id)
+    logger.info("Full GraphRAG pipeline triggered", user_id=user_id)
     nodes, edges = neo4j.get_user_graph(user_id)
     if not nodes:
         raise HTTPException(
@@ -108,16 +130,70 @@ async def trigger_community_detection(
 
     doc_count = neo4j.get_user_document_count(user_id)
     from app.services.community_detection_service import build_user_brain
-    brain, communities_raw = build_user_brain(user_id, nodes, edges, doc_count)
 
-    # Write community_id onto every entity node
-    neo4j.save_community_assignments(user_id, communities_raw)
+    brain, flat_for_neo4j, hierarchical_raw = build_user_brain(
+        user_id, nodes, edges, doc_count, hierarchical=True
+    )
 
-    # Permanently persist the Brain node in Neo4j
-    neo4j.save_brain_node(user_id, brain.model_dump())
+    # Write community_id onto every entity node (leaf-level only)
+    neo4j.save_community_assignments(user_id, flat_for_neo4j)
 
-    # Warm the Redis cache
-    await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=BRAIN_CACHE_TTL)
+    node_map = {n.get("id") or n.get("label", ""): n for n in nodes if n.get("id") or n.get("label")}
+
+    # Summarization: leaf → mid → root (each level may use child summaries)
+    summarization = SummarizationService(api_key=settings.OPENAI_API_KEY)
+    summaries_by_cid: Dict[str, str] = {}
+    for level in (CommunityLevel.leaf, CommunityLevel.mid, CommunityLevel.root):
+        for c in hierarchical_raw:
+            if c.get("level") != level.value:
+                continue
+            community_nodes, community_edges = _nodes_and_edges_for_community(
+                c, node_map, edges
+            )
+            child_ids = c.get("child_community_ids") or []
+            child_summaries = [summaries_by_cid[cid] for cid in child_ids if cid in summaries_by_cid]
+            summary = summarization.summarize_community(
+                c["community_id"],
+                level,
+                community_nodes,
+                community_edges,
+                child_summaries=child_summaries if child_summaries else None,
+            )
+            summaries_by_cid[c["community_id"]] = summary
+            c["summary"] = summary
+
+    # Embedding: entities (Identity Card) then community summaries
+    embedding_svc = EmbeddingService(api_key=settings.OPENAI_API_KEY)
+    entity_embeddings = embedding_svc.embed_entities(nodes)
+    neo4j.save_entity_embeddings(user_id, entity_embeddings)
+
+    summary_texts = [c.get("summary") or "" for c in hierarchical_raw]
+    summary_vectors = embedding_svc.embed_texts(summary_texts)
+    for c, vec in zip(hierarchical_raw, summary_vectors):
+        c["embedding"] = vec
+    neo4j.save_community_nodes(user_id, hierarchical_raw)
+
+    # Build enriched brain with communities_by_level
+    communities_by_level: List[HierarchicalCommunity] = [
+        HierarchicalCommunity(
+            community_id=c["community_id"],
+            level=CommunityLevel(c["level"]),
+            parent_community_id=c.get("parent_community_id"),
+            node_count=len(c.get("node_ids") or []),
+            top_entities=c.get("top_entities", []),
+            keywords=c.get("keywords", []),
+            document_sources=c.get("document_sources", []),
+            summary=c.get("summary"),
+            embedding=c.get("embedding"),
+        )
+        for c in hierarchical_raw
+    ]
+    brain.communities_by_level = communities_by_level
+    brain_dict = brain.model_dump()
+    brain_dict["communities_by_level"] = [h.model_dump() for h in communities_by_level]
+
+    neo4j.save_brain_node(user_id, brain_dict)
+    await cache_set(cache_key_community_brain(user_id), brain_dict, ttl_seconds=BRAIN_CACHE_TTL)
     return brain
 
 

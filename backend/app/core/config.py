@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: str = "password123"
     NEO4J_DATABASE: str = "neo4j"
 
+    # GraphRAG: community summarization and embedding
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    COMMUNITY_SUMMARIZATION_MODEL: str = "gpt-4o-mini"
+
     class Config:
         case_sensitive = True
         env_file = ".env"

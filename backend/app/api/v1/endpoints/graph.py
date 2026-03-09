@@ -1,17 +1,29 @@
 """
 Graph persistence endpoints: save/retrieve document graphs to/from Neo4j.
-After a document graph is saved, community detection is automatically
-triggered in the background to rebuild the user's merged knowledge brain.
+After a document graph is saved, the full GraphRAG pipeline (community
+detection → summarization → embedding) is automatically triggered in the
+background to rebuild the user's merged knowledge brain.
 """
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from app.api.v1.deps import get_current_user
+from app.core.cache import (
+    cache_get,
+    cache_key_community_brain,
+    cache_key_extraction_job,
+    cache_key_pipeline_job,
+    cache_key_relationship_job,
+    cache_set,
+)
+from app.core.config import settings
 from app.models.user import User
+from app.schemas.community import CommunityLevel, HierarchicalCommunity, UserBrain
 from app.schemas.relationships import DocumentGraph
-from app.core.cache import cache_get, cache_key_community_brain, cache_key_extraction_job, cache_key_relationship_job, cache_set
+from app.services.embedding_service import EmbeddingService
 from app.services.neo4j_service import Neo4jService
+from app.services.summarization_service import SummarizationService
 
 router = APIRouter()
 
@@ -65,36 +77,230 @@ async def _get_graph_from_cache(job_id: str, user_id: str) -> DocumentGraph:
     return DocumentGraph(**result)
 
 
-async def _background_community_detection(user_id: str, neo4j: Neo4jService) -> None:
-    """Run community detection for user_id and store the brain in cache.
+def _nodes_and_edges_for_community(
+    community: Dict[str, Any],
+    node_map: Dict[str, Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Return (nodes, edges) for a community given its node_ids."""
+    node_ids = set(community.get("node_ids") or [])
+    community_nodes = [node_map[nid] for nid in node_ids if nid in node_map]
+    community_edges = [
+        e
+        for e in edges
+        if e.get("source") in node_ids and e.get("target") in node_ids
+    ]
+    return community_nodes, community_edges
+
+
+BRAIN_CACHE_TTL = 86400  # 24 hours
+PIPELINE_JOB_TTL = 60 * 60  # 1 hour
+
+
+async def _set_pipeline_status(
+    pipeline_job_id: str,
+    *,
+    status: str,
+    step: str,
+    step_index: int,
+    total_steps: int,
+    message: str,
+    user_id: str,
+    error: Optional[str] = None,
+) -> None:
+    """Persist a snapshot of the long-running pipeline status in cache."""
+    payload: Dict[str, Any] = {
+        "pipeline_job_id": pipeline_job_id,
+        "status": status,
+        "step": step,
+        "step_index": step_index,
+        "total_steps": total_steps,
+        "message": message,
+        "user_id": user_id,
+    }
+    if error is not None:
+        payload["error"] = error
+    await cache_set(cache_key_pipeline_job(pipeline_job_id), payload, ttl_seconds=PIPELINE_JOB_TTL)
+
+
+async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: Neo4jService) -> None:
+    """Run the full GraphRAG pipeline for user_id in the background.
 
     Called as a FastAPI BackgroundTask after saving a document graph.
     """
     from app.core.logger import logger
+    from app.services.community_detection_service import build_user_brain
 
-    logger.info("Background community detection started", user_id=user_id)
+    logger.info(
+        "Background full graph pipeline started",
+        user_id=user_id,
+        pipeline_job_id=pipeline_job_id,
+    )
+    total_steps = 3  # community_detection, summarizing, embedding
     try:
+        # Step 1: community detection
+        await _set_pipeline_status(
+            pipeline_job_id,
+            status="running",
+            step="community_detection",
+            step_index=1,
+            total_steps=total_steps,
+            message="Detecting communities…",
+            user_id=user_id,
+        )
+
         nodes, edges = neo4j.get_user_graph(user_id)
         if not nodes:
-            logger.info("No nodes found for community detection", user_id=user_id)
+            logger.info(
+                "No nodes found for community detection",
+                user_id=user_id,
+                pipeline_job_id=pipeline_job_id,
+            )
+            await _set_pipeline_status(
+                pipeline_job_id,
+                status="failed",
+                step="community_detection",
+                step_index=1,
+                total_steps=total_steps,
+                message="No nodes found in Neo4j. Add documents to the knowledge base first.",
+                user_id=user_id,
+                error="no_nodes",
+            )
             return
 
         doc_count = neo4j.get_user_document_count(user_id)
 
-        from app.services.community_detection_service import build_user_brain
-        brain, communities_raw = build_user_brain(user_id, nodes, edges, doc_count)
+        brain, flat_for_neo4j, hierarchical_raw = build_user_brain(
+            user_id, nodes, edges, doc_count, hierarchical=True
+        )
 
-        # Write community_id onto every entity node
-        neo4j.save_community_assignments(user_id, communities_raw)
+        # Write community_id onto every entity node (leaf-level only)
+        neo4j.save_community_assignments(user_id, flat_for_neo4j)
+
+        node_map = {
+            n.get("id") or n.get("label", ""): n
+            for n in nodes
+            if n.get("id") or n.get("label")
+        }
+
+        # Step 2: summarization (leaf → mid → root)
+        await _set_pipeline_status(
+            pipeline_job_id,
+            status="running",
+            step="summarizing",
+            step_index=2,
+            total_steps=total_steps,
+            message="Summarizing communities…",
+            user_id=user_id,
+        )
+
+        summarization = SummarizationService(api_key=settings.OPENAI_API_KEY)
+        summaries_by_cid: Dict[str, str] = {}
+        for level in (CommunityLevel.leaf, CommunityLevel.mid, CommunityLevel.root):
+            for c in hierarchical_raw:
+                if c.get("level") != level.value:
+                    continue
+                community_nodes, community_edges = _nodes_and_edges_for_community(
+                    c, node_map, edges
+                )
+                child_ids = c.get("child_community_ids") or []
+                child_summaries = [
+                    summaries_by_cid[cid] for cid in child_ids if cid in summaries_by_cid
+                ]
+                summary = summarization.summarize_community(
+                    c["community_id"],
+                    level,
+                    community_nodes,
+                    community_edges,
+                    child_summaries=child_summaries if child_summaries else None,
+                )
+                summaries_by_cid[c["community_id"]] = summary
+                c["summary"] = summary
+
+        # Step 3: embeddings (entities + community summaries)
+        await _set_pipeline_status(
+            pipeline_job_id,
+            status="running",
+            step="embedding",
+            step_index=3,
+            total_steps=total_steps,
+            message="Embedding entities and community summaries…",
+            user_id=user_id,
+        )
+
+        embedding_svc = EmbeddingService(api_key=settings.OPENAI_API_KEY)
+        entity_embeddings = embedding_svc.embed_entities(nodes)
+        neo4j.save_entity_embeddings(user_id, entity_embeddings)
+
+        summary_texts = [c.get("summary") or "" for c in hierarchical_raw]
+        summary_vectors = embedding_svc.embed_texts(summary_texts)
+        for c, vec in zip(hierarchical_raw, summary_vectors):
+            c["embedding"] = vec
+        neo4j.save_community_nodes(user_id, hierarchical_raw)
+
+        # Build enriched brain with communities_by_level
+        communities_by_level: List[HierarchicalCommunity] = [
+            HierarchicalCommunity(
+                community_id=c["community_id"],
+                level=CommunityLevel(c["level"]),
+                parent_community_id=c.get("parent_community_id"),
+                node_count=len(c.get("node_ids") or []),
+                top_entities=c.get("top_entities", []),
+                keywords=c.get("keywords", []),
+                document_sources=c.get("document_sources", []),
+                summary=c.get("summary"),
+                embedding=c.get("embedding"),
+            )
+            for c in hierarchical_raw
+        ]
+        brain.communities_by_level = communities_by_level
+        brain_dict = brain.model_dump()
+        brain_dict["communities_by_level"] = [
+            h.model_dump() for h in communities_by_level
+        ]
 
         # Persist the brain permanently in Neo4j as a Brain node
-        neo4j.save_brain_node(user_id, brain.model_dump())
+        neo4j.save_brain_node(user_id, brain_dict)
 
         # Also warm the Redis cache so the next read is instant
-        await cache_set(cache_key_community_brain(user_id), brain.model_dump(), ttl_seconds=86400)
-        logger.success("Community brain saved and cached", user_id=user_id, communities=brain.community_count)
+        await cache_set(
+            cache_key_community_brain(user_id),
+            brain_dict,
+            ttl_seconds=BRAIN_CACHE_TTL,
+        )
+
+        await _set_pipeline_status(
+            pipeline_job_id,
+            status="done",
+            step="done",
+            step_index=total_steps,
+            total_steps=total_steps,
+            message="Knowledge brain updated successfully.",
+            user_id=user_id,
+        )
+        logger.success(
+            "Community brain saved, enriched and cached",
+            user_id=user_id,
+            pipeline_job_id=pipeline_job_id,
+            communities=brain.community_count,
+        )
     except Exception as exc:
-        logger.exception("Community detection background task failed", user_id=user_id, error=str(exc))
+        await _set_pipeline_status(
+            pipeline_job_id,
+            status="failed",
+            step="error",
+            step_index=0,
+            total_steps=total_steps,
+            message="Graph pipeline failed.",
+            user_id=user_id,
+            error=str(exc),
+        )
+        logger.exception(
+            "Full graph pipeline background task failed",
+            user_id=user_id,
+            pipeline_job_id=pipeline_job_id,
+            error=str(exc),
+        )
 
 
 @router.post("/save/{job_id}")
@@ -106,9 +312,11 @@ async def save_graph_to_neo4j(
 ):
     """
     Save the extracted graph for the given extraction job to Neo4j,
-    then trigger community detection in the background.
+    then trigger the full GraphRAG pipeline in the background.
     """
     from app.core.logger import logger
+    from uuid import uuid4
+
     user_id = current_user.email or current_user.username
     document_graph = await _get_graph_from_cache(job_id, user_id)
     if not neo4j:
@@ -118,8 +326,19 @@ async def save_graph_to_neo4j(
         )
     try:
         neo4j.save_document_graph(document_graph, user_id=user_id)
-        background_tasks.add_task(_background_community_detection, user_id, neo4j)
-        return {"ok": True, "message": "Graph saved to knowledge base", "document_name": document_graph.filename}
+        pipeline_job_id = str(uuid4())
+        background_tasks.add_task(
+            _background_full_pipeline,
+            pipeline_job_id,
+            user_id,
+            neo4j,
+        )
+        return {
+            "ok": True,
+            "message": "Graph saved to knowledge base; background pipeline started.",
+            "document_name": document_graph.filename,
+            "pipeline_job_id": pipeline_job_id,
+        }
     except Exception as e:
         logger.exception("Failed to save graph to Neo4j", job_id=job_id, error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to save graph: {str(e)}")
@@ -185,3 +404,18 @@ async def neo4j_health(
         return {"status": "unavailable", "message": "Neo4j not configured"}
     ok = neo4j.health_check()
     return {"status": "ok" if ok else "unhealthy"}
+
+
+@router.get("/pipeline/status/{pipeline_job_id}")
+async def get_pipeline_status(
+    pipeline_job_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Return the status of a long-running graph pipeline job."""
+    user_id = current_user.email or current_user.username
+    job = await cache_get(cache_key_pipeline_job(pipeline_job_id))
+    if not job:
+        raise HTTPException(status_code=404, detail="Pipeline job not found")
+    if job.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this pipeline job")
+    return job

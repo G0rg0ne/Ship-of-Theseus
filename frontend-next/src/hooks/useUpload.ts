@@ -11,6 +11,11 @@ export type ProcessingState =
   | "uploading"
   | "extracting_entities"
   | "extracting_relationships"
+  | "saving_graph"
+  | "detecting_communities"
+  | "summarizing"
+  | "embedding"
+  | "preview"
   | "done"
   | "error";
 
@@ -25,6 +30,8 @@ export function useUpload(token: string | null) {
   const [progress, setProgress] = useState<ProcessingProgress | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [graph, setGraph] = useState<api.DocumentGraph | null>(null);
+  const [pipelineJobId, setPipelineJobId] = useState<string | null>(null);
+  const [documentName, setDocumentName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -32,6 +39,8 @@ export function useUpload(token: string | null) {
     setState("idle");
     setProgress(null);
     setJobId(null);
+    setPipelineJobId(null);
+    setDocumentName(null);
     setGraph(null);
     setError(null);
     setSelectedFile(null);
@@ -98,8 +107,125 @@ export function useUpload(token: string | null) {
             const graphData = await api.getExtractionGraph(job_id, token);
             if (graphData) {
               setGraph(graphData);
-              setState("done");
-              setProgress(null);
+              setDocumentName(graphData.filename);
+
+              // Immediately save to Neo4j and start the background pipeline
+              try {
+                setState("saving_graph");
+                setProgress({
+                  completed: 0,
+                  total: 1,
+                  message: "Saving graph to knowledge base…",
+                });
+                const saveResult = (await api.saveGraphToNeo4j(
+                  job_id,
+                  token
+                )) as any;
+                const pipelineId: string | undefined = saveResult?.pipeline_job_id;
+                if (!pipelineId) {
+                  throw new Error("Pipeline job id missing from save response.");
+                }
+                setPipelineJobId(pipelineId);
+                // Move UI past "Saving" immediately (the rest is background pipeline work)
+                setState("detecting_communities");
+                setProgress({
+                  completed: 0,
+                  total: 3,
+                  message: "Starting brain pipeline…",
+                });
+
+                const pipelineStart = Date.now();
+                const pollPipeline = async (): Promise<void> => {
+                  if (Date.now() - pipelineStart > TIMEOUT_MS) {
+                    setState("error");
+                    setError("Graph pipeline timed out.");
+                    setProgress(null);
+                    return;
+                  }
+                  try {
+                    const res = await fetch(
+                      `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/graph/pipeline/status/${encodeURIComponent(
+                        pipelineId
+                      )}`,
+                      {
+                        headers: {
+                          "Content-Type": "application/json",
+                          Authorization: `Bearer ${token}`,
+                        },
+                      }
+                    );
+                    if (!res.ok) {
+                      throw new Error("Failed to fetch pipeline status.");
+                    }
+                    const status = (await res.json()) as {
+                      status: "running" | "done" | "failed";
+                      step: string;
+                      step_index: number;
+                      total_steps: number;
+                      message: string;
+                      error?: string;
+                    };
+
+                    if (status.status === "running") {
+                      let pipelineState: ProcessingState = "detecting_communities";
+                      if (status.step === "summarizing") pipelineState = "summarizing";
+                      if (status.step === "embedding") pipelineState = "embedding";
+                      setState(pipelineState);
+                      setProgress({
+                        completed: status.step_index - 1,
+                        total: status.total_steps,
+                        message: status.message,
+                      });
+                      setTimeout(pollPipeline, POLL_INTERVAL_MS);
+                      return;
+                    }
+                    if (status.status === "failed") {
+                      setState("error");
+                      setError(status.error || "Graph pipeline failed.");
+                      setProgress(null);
+                      return;
+                    }
+
+                    // done
+                    setState("preview");
+                    setProgress({
+                      completed: status.total_steps,
+                      total: status.total_steps,
+                      message: "Graph pipeline complete. Preview ready.",
+                    });
+                    // Refresh graph from Neo4j so it includes community assignments
+                    if (graphData.filename) {
+                      try {
+                        const enriched = await api.getGraphFromNeo4j(
+                          graphData.filename,
+                          token
+                        );
+                        setGraph(enriched);
+                      } catch {
+                        // fall back to extracted graph
+                      }
+                    }
+                    return;
+                  } catch (err) {
+                    setState("error");
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : "Failed to fetch pipeline status."
+                    );
+                    setProgress(null);
+                  }
+                };
+                pollPipeline();
+              } catch (err) {
+                setState("error");
+                setError(
+                  err instanceof Error
+                    ? err.message
+                    : "Failed to save graph or start pipeline."
+                );
+                setProgress(null);
+              }
               return;
             }
             setTimeout(graphPoll, POLL_INTERVAL_MS);
@@ -121,6 +247,8 @@ export function useUpload(token: string | null) {
     progress,
     jobId,
     graph,
+    pipelineJobId,
+    documentName,
     error,
     selectedFile,
     uploadAndProcess,

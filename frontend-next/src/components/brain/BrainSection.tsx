@@ -12,9 +12,10 @@ import type { CommunityInfo } from "@/lib/api";
 
 interface BrainSectionProps {
   token: string;
+  onBrainCleared?: () => void;
 }
 
-export function BrainSection({ token }: BrainSectionProps) {
+export function BrainSection({ token, onBrainCleared }: BrainSectionProps) {
   const { brain, isLoading, refresh, remove, mutate } = useBrain(token);
   const [highlightedCommunityId, setHighlightedCommunityId] = useState<string | null>(null);
   const [panelCommunity, setPanelCommunity] = useState<CommunityInfo | null>(null);
@@ -61,6 +62,15 @@ export function BrainSection({ token }: BrainSectionProps) {
   const handleRefresh = async () => {
     await refresh();
     await loadGraphData();
+  };
+
+  const handleClearBrain = async () => {
+    await remove();
+    setGraphData(null);
+    setHighlightedCommunityId(null);
+    setPanelCommunity(null);
+    setPanelOpen(false);
+    onBrainCleared?.();
   };
 
   return (
@@ -111,7 +121,7 @@ export function BrainSection({ token }: BrainSectionProps) {
             <Button
               variant="destructive"
               size="sm"
-              onClick={remove}
+              onClick={handleClearBrain}
               disabled={!brain || isLoading}
             >
               Delete brain and all documents

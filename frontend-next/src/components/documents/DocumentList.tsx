@@ -26,9 +26,16 @@ function PdfIcon({ className }: { className?: string }) {
 interface DocumentListProps {
   documents: DocumentListItem[];
   isLoading?: boolean;
+  onSelect?: (doc: DocumentListItem) => void;
+  selectedDocumentName?: string | null;
 }
 
-export function DocumentList({ documents, isLoading }: DocumentListProps) {
+export function DocumentList({
+  documents,
+  isLoading,
+  onSelect,
+  selectedDocumentName,
+}: DocumentListProps) {
   if (isLoading) {
     return (
       <div className="space-y-2">
@@ -58,7 +65,13 @@ export function DocumentList({ documents, isLoading }: DocumentListProps) {
         {documents.map((doc) => (
           <li
             key={doc.document_name}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-background/60"
+            onClick={() => onSelect?.(doc)}
+            className={[
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-background/60 cursor-pointer",
+              selectedDocumentName === doc.document_name
+                ? "bg-background/70 border border-border/70"
+                : "",
+            ].join(" ")}
           >
             <PdfIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="truncate" title={doc.document_name}>

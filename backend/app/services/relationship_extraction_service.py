@@ -67,9 +67,9 @@ class RelationshipExtractionService:
         for o in chunk_entities.organizations:
             lines.append(f"- {o.name} (Organization)")
         for loc in chunk_entities.locations:
-            lines.append(f"- {loc} (Location)")
+            lines.append(f"- {loc.name} (Location)")
         for term in chunk_entities.key_terms:
-            lines.append(f"- {term} (KeyTerm)")
+            lines.append(f"- {term.name} (KeyTerm)")
         return "\n".join(lines) if lines else "(No entities in this chunk)"
 
     @staticmethod
@@ -168,22 +168,28 @@ class RelationshipExtractionService:
                         )
                     )
             for loc in chunk_ent.locations:
-                name = (loc if isinstance(loc, str) else str(loc)).strip()
+                name = loc.name.strip()
                 if name and name not in label_to_id:
                     nid = _slug(name, idx)
                     idx += 1
                     label_to_id[name] = nid
+                    props = {}
+                    if loc.description is not None:
+                        props["description"] = loc.description
                     nodes.append(
-                        GraphNode(id=nid, label=name, type="location", properties={})
+                        GraphNode(id=nid, label=name, type="location", properties=props)
                     )
             for term in chunk_ent.key_terms:
-                name = (term if isinstance(term, str) else str(term)).strip()
+                name = term.name.strip()
                 if name and name not in label_to_id:
                     nid = _slug(name, idx)
                     idx += 1
                     label_to_id[name] = nid
+                    props = {}
+                    if term.description is not None:
+                        props["description"] = term.description
                     nodes.append(
-                        GraphNode(id=nid, label=name, type="key_term", properties={})
+                        GraphNode(id=nid, label=name, type="key_term", properties=props)
                     )
 
         valid_entities = set(label_to_id.keys())
@@ -290,7 +296,7 @@ class RelationshipExtractionService:
                             organizations=[],
                             dates=[],
                             locations=[],
-                            key_terms=[],
+                            key_terms=[],  # List[LocationEntity] / List[KeyTermEntity]
                         )
                     )
                     tasks.append(

@@ -1,0 +1,11 @@
+{
+  "name": "community_summary",
+  "description": "Generate a comprehensive report/summary for a knowledge community at a given hierarchy level",
+  "version": "1.0",
+  "template": "You are summarizing a cluster of related entities from a knowledge graph. This cluster is at the \"{level}\" level of a hierarchical partition (leaf = fine-grained, mid = thematic grouping, root = high-level theme).\n\nWrite a clear, concise report (2-4 paragraphs) that:\n1. States the main theme or topic this community represents.\n2. Describes the key entities and how they relate (people, organizations, locations, concepts).\n3. Highlights the most important relationships and context from the source material.\n4. If this is a mid or root community, synthesize the themes from the sub-communities into a coherent high-level summary.\n\nDo not invent facts; base the summary only on the entities and relationships provided.\n\nLevel: {level}\nCommunity ID: {community_id}\n\nEntities in this community:\n{entities_text}\n\nRelationships (source — relation — target):\n{relationships_text}\n\n{child_summaries_section}\n\nWrite the community summary report:",
+  "input_variables": ["level", "community_id", "entities_text", "relationships_text", "child_summaries_section"],
+  "metadata": {
+    "model_suggested": "gpt-4o-mini",
+    "temperature": 0.2
+  }
+}

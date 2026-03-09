@@ -11,10 +11,13 @@ As I continue building this project, you'll find below an overview of the featur
 
 The project follows a **Graph RAG** (Graph Retrieval-Augmented Generation) design:
 
-- **Indexing phase:** Source documents are chunked (e.g. with a recursive text splitter), then an LLM extracts entities and relationships to build a knowledge graph. Community detection and a hierarchical structure (Root / Low / High levels) organize the graph; an LLM generates community summaries, which are embedded and stored in a vector database.
-- **Query phase:** A user query selects a community level, retrieves relevant community summaries from the vector database, and combines them into a final response.
+- **Entity extraction:** For each entity (person, organization, location, key term) the LLM extracts a **description** from the surrounding text, forming an "Identity Card" (name + description) used later for embedding-based search.
+- **Structural analysis (hierarchical phase):** Louvain community detection groups nodes into **leaf** communities; a meta-graph of leaf clusters is built and Louvain runs again to form **mid** and **root** levels (Leaf → Mid → Root tree).
+- **Summarization:** An LLM writes a comprehensive report for every community at every level (prompt: `backend/app/prompts/community_summary.json`).
+- **Vectorization (embedding phase):** Entity Identity Cards and community summaries are embedded with **text-embedding-3-small**; vectors are stored in Neo4j vector indexes for **local search** (entity-level) and **global search** (theme-level).
+- **Query phase:** A user query can target entity embeddings (specific facts) or community summary embeddings (high-level themes); results are combined into a final response.
 
-LLMs drive extraction, community detection, hierarchy building, and summary generation; the vector store holds the community summaries for retrieval.
+LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds both the graph and the vector indexes.
 ### Example: Knowledge Graph Visualization
 
 ![Example of the knowledge graph extracted from one document](assets/graph_exmp.png)
@@ -35,8 +38,8 @@ LLMs drive extraction, community detection, hierarchy building, and summary gene
 - 🔍 **Knowledge graph extraction**: "Process Document" runs entity then relationship extraction; shows entity + relationship counts. If extraction fails or times out, the user sees a clear error and a **Try again** option.
 - 🔗 Relationship extraction (auto-triggered after entities); constrained to extracted entities only; graph-ready output (nodes + edges)
 - 📦 Redis cache (documents, extraction jobs, relationship jobs, community brain); in-memory fallback when Redis is not set
-- 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document; "Add to Knowledge Base" button saves the graph to Neo4j; nodes are tagged with `user_id` and `document_name`
-- 🧠 **Community Detection / Knowledge Brain**: After every document is added to the knowledge base, Louvain community detection runs automatically (as a background task) across *all* of the user's documents in Neo4j. The result is the user's **Knowledge Brain** — a set of clusters grouping related entities across documents. The brain is displayed in the UI and cached in Redis. Users can also manually re-run detection via "Refresh".
+- 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document. After processing, the user first sees a **per‑document graph preview** (with entity + relationship counts and community colouring when the pipeline has finished) and can then choose to keep it in the brain. Nodes are tagged with `user_id` and `document_name`.
+- 🧠 **Community Detection / Knowledge Brain (GraphRAG):** Saving a document graph now automatically triggers the **full GraphRAG pipeline** in the background: hierarchical community detection (Leaf → Mid → Root), LLM summarization per community, and entity + summary embedding with **text-embedding-3-small**. Pipeline progress is tracked in Redis and surfaced in the UI (community detection → summarization → embedding). The merged knowledge brain across all documents is stored in Neo4j and cached in Redis with `communities_by_level` summaries.
 - 🚀 FastAPI backend with modular architecture
 - 🎨 **Next.js 14** frontend (TypeScript, Tailwind CSS, shadcn/ui): **Nautical + Scholarly** dark UI — warm amber/gold accents on deep navy; Crimson Pro serif headings; **welcome page** with asymmetric split: animated **node constellation** canvas (amber/teal particles + connecting lines) and horizontal journey strip (Upload → Extract → Build → Explore) on the left; auth panel with left accent bar on the right; **dashboard** with dot-grid background, anchor branding; **3-panel layout**: left sidebar (upload + document list), center (**Knowledge Brain** — metrics, force-directed graph, slide-in community panel), right panel (**Ask your brain** chat with document-context badges and message input; bot backend not yet wired)
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
@@ -56,8 +59,8 @@ Ship-of-Theseus/
 │   │   │       │   ├── auth.py
 │   │   │       │   ├── documents.py
 │   │   │       │   ├── entities.py   # Entity extraction (parallel, progress)
-│   │   │       │   ├── graph.py     # Neo4j graph persistence; triggers community detection on save
-│   │   │       │   └── community.py # Community detection / knowledge brain endpoints
+│   │   │       │   ├── graph.py     # Neo4j graph persistence; triggers full GraphRAG pipeline on save + pipeline status
+│   │   │       │   └── community.py # Community detection / knowledge brain endpoints (manual full pipeline trigger)
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
@@ -66,29 +69,32 @@ Ship-of-Theseus/
 │   │   │   ├── security.py     # JWT & password utilities
 │   │   │   └── logger.py        # Loguru logging configuration
 │   │   ├── prompts/             # LLM prompt templates (JSON)
-│   │   │   ├── entity_extraction.json
-│   │   │   └── relationship_extraction.json
+│   │   │   ├── entity_extraction.json   # Entities + Identity Card (description)
+│   │   │   ├── relationship_extraction.json
+│   │   │   └── community_summary.json   # Per-community report (leaf/mid/root)
 │   │   ├── models/              # ORM models
 │   │   │   └── user.py          # User model (PostgreSQL)
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   ├── auth.py
 │   │   │   ├── entities.py
 │   │   │   ├── relationships.py
-│   │   │   └── community.py     # UserBrain & CommunityInfo schemas
+│   │   │   └── community.py     # UserBrain, CommunityInfo, HierarchicalCommunity, CommunityLevel
 │   │   ├── services/            # Business logic
 │   │   │   ├── user_service.py
 │   │   │   ├── entity_extraction_service.py
 │   │   │   ├── relationship_extraction_service.py
-│   │   │   ├── neo4j_service.py   # Neo4j graph persistence + user-scoped graph queries
-│   │   │   └── community_detection_service.py  # Louvain community detection
+│   │   │   ├── neo4j_service.py   # Graph persistence, vector indexes, community nodes, entity embeddings
+│   │   │   ├── community_detection_service.py  # Hierarchical Louvain (leaf/mid/root)
+│   │   │   ├── summarization_service.py       # LLM community summaries
+│   │   │   └── embedding_service.py           # text-embedding-3-small (entities + summaries)
 │   │   └── db/                  # PostgreSQL (async engine, session, init_tables)
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend-next/               # Next.js 14 frontend (primary UI)
 │   ├── src/
 │   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx
-│   │   ├── components/          # auth/, upload/, brain/, NodeConstellation (animated canvas)
-│   │   ├── hooks/               # useAuth, useUpload, useBrain
+│   │   ├── components/          # auth/, upload/, brain/, documents/, NodeConstellation (animated canvas)
+│   │   ├── hooks/               # useAuth, useUpload, useBrain (upload hook now drives extraction + save + background brain pipeline)
 │   │   └── lib/                 # api.ts (backend client), utils
 │   ├── package.json
 │   ├── next.config.ts
@@ -178,6 +184,9 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
   - `NEO4J_USER` - Neo4j username (set in `.env`; no default in compose)
   - `NEO4J_PASSWORD` - Neo4j password (set in `.env` only; no password appears in docker-compose)
   - `NEO4J_DATABASE` - Database name (default: `neo4j`)
+- **GraphRAG (community summarization and embedding):**
+  - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`)
+  - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)
 
 ## 🏃 Running Locally (Development)
 
@@ -237,16 +246,17 @@ pytest --cov=app --cov-report=html
 - `GET /entities/extract/graph/{job_id}` - Get complete graph for an entity job (uses entity job_id; returns graph when relationship extraction has completed) (requires auth)
 
 ### Graph Persistence (Neo4j) Endpoints
-- `POST /graph/save/{job_id}` - Save extracted graph to Neo4j and trigger community detection (uses entity job_id; requires auth)
+- `POST /graph/save/{job_id}` - Save extracted graph to Neo4j and trigger the **full GraphRAG pipeline** in the background (community detection → summarization → embedding). Returns `{ ok, message, document_name, pipeline_job_id }` (uses entity job_id; requires auth).
 - `GET /graph/list` - List documents in Neo4j with node/edge counts (requires auth)
 - `GET /graph/{document_name}` - Get graph from Neo4j by document name (requires auth)
 - `DELETE /graph/{document_name}` - Delete document graph from Neo4j (requires auth)
 - `GET /graph/health` - Neo4j connectivity check (requires auth)
+- `GET /graph/pipeline/status/{pipeline_job_id}` - Get status of a long‑running graph pipeline job; returns the current `step` (`community_detection`, `summarizing`, `embedding`), `step_index`, `total_steps`, `status` (`running|done|failed`), and `message` (requires auth)
 
-### Community Detection / Knowledge Brain Endpoints
-- `GET /community/brain` - Get current user's knowledge brain (community detection results cached in Redis; requires auth)
-- `POST /community/detect` - Manually trigger community detection for the current user (requires auth)
-- `DELETE /community/brain` - Permanently delete the user's brain and all document graphs (requires auth)
+### Community Detection / Knowledge Brain Endpoints (GraphRAG)
+- `GET /community/brain` - Get current user's knowledge brain (includes `communities_by_level` with summaries when full pipeline has run; cache: Redis → Neo4j Brain node → recompute fallback; requires auth)
+- `POST /community/detect` - Run full GraphRAG pipeline: hierarchical detection (Leaf → Mid → Root), LLM summarization per community, entity and summary embedding (text-embedding-3-small), persist to Neo4j (assignments, community nodes, vector indexes); returns enriched brain (requires auth)
+- `DELETE /community/brain` - Permanently delete the user's brain, community nodes, and all document graphs from Neo4j; clear Redis cache (requires auth)
 
 ## 🐳 Docker, Redis, PostgreSQL, and Neo4j
 

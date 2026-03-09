@@ -124,7 +124,8 @@ class Neo4jService:
                 for k, v in (node.properties or {}).items():
                     if v is not None:
                         props[k] = _serialize_value(v)
-                session.run(f"CREATE (n:{label} $props)", props=props)
+                # :Entity label enables vector index for embedding-based search
+                session.run(f"CREATE (n:{label}:Entity $props)", props=props)
 
             for edge in document_graph.edges:
                 rel_props: Dict[str, Any] = {
@@ -371,17 +372,137 @@ class Neo4jService:
             "CREATE INDEX brain_user_id_idx IF NOT EXISTS FOR (b:Brain) ON (b.user_id)"
         )
 
+    # ------------------------------------------------------------------
+    # Vector indexes and embedding storage (GraphRAG)
+    # ------------------------------------------------------------------
+
+    VECTOR_DIMENSIONS = 1536  # text-embedding-3-small
+
+    def ensure_vector_indexes(self, session: Any) -> None:
+        """Create vector indexes for Entity.embedding and Community.embedding if they do not exist."""
+        try:
+            session.run(
+                """
+                CREATE VECTOR INDEX entity_embedding_idx IF NOT EXISTS
+                FOR (n:Entity) ON (n.embedding)
+                OPTIONS {indexConfig: {
+                    `vector.dimensions`: $dim,
+                    `vector.similarity_function`: 'cosine'
+                }}
+                """,
+                dim=self.VECTOR_DIMENSIONS,
+            )
+        except Exception as e:
+            logger.warning("Entity vector index creation skipped or failed", error=str(e))
+        try:
+            session.run(
+                """
+                CREATE VECTOR INDEX community_summary_embedding_idx IF NOT EXISTS
+                FOR (c:Community) ON (c.embedding)
+                OPTIONS {indexConfig: {
+                    `vector.dimensions`: $dim,
+                    `vector.similarity_function`: 'cosine'
+                }}
+                """,
+                dim=self.VECTOR_DIMENSIONS,
+            )
+        except Exception as e:
+            logger.warning(
+                "Community vector index creation skipped or failed", error=str(e)
+            )
+
+    def save_community_nodes(
+        self,
+        user_id: str,
+        communities: List[Dict[str, Any]],
+    ) -> None:
+        """
+        MERGE :Community nodes for the user. Each community has community_id, level,
+        parent_community_id, user_id, summary, and optionally embedding (list of floats).
+        """
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            self.ensure_vector_indexes(session)
+            for c in communities:
+                cid = c.get("community_id") or ""
+                level = c.get("level") or "leaf"
+                parent = c.get("parent_community_id")
+                summary = c.get("summary") or ""
+                embedding = c.get("embedding")
+                node_count = c.get("node_count", len(c.get("node_ids", [])))
+                top_entities = c.get("top_entities", [])
+                keywords = c.get("keywords", [])
+                doc_sources = c.get("document_sources", [])
+                props: Dict[str, Any] = {
+                    "user_id": user_id,
+                    "community_id": cid,
+                    "level": level,
+                    "parent_community_id": parent or "",
+                    "summary": summary,
+                    "node_count": node_count,
+                    "top_entities_json": json.dumps(top_entities, default=str),
+                    "keywords_json": json.dumps(keywords, default=str),
+                    "document_sources_json": json.dumps(doc_sources, default=str),
+                }
+                if embedding is not None:
+                    props["embedding"] = embedding
+                session.run(
+                    """
+                    MERGE (c:Community {user_id: $user_id, community_id: $community_id})
+                    SET c += $props
+                    """,
+                    user_id=user_id,
+                    community_id=cid,
+                    props=props,
+                )
+        logger.success(
+            "Community nodes saved to Neo4j",
+            user_id=user_id,
+            communities=len(communities),
+        )
+
+    def save_entity_embeddings(
+        self,
+        user_id: str,
+        embeddings_map: Dict[str, List[float]],
+    ) -> None:
+        """
+        Set embedding property on entity nodes. Adds :Entity label if missing.
+        embeddings_map: node_id -> list of floats (vector).
+        """
+        if not embeddings_map:
+            return
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            self.ensure_vector_indexes(session)
+            for node_id, embedding in embeddings_map.items():
+                session.run(
+                    """
+                    MATCH (n) WHERE n.user_id = $user_id AND n.id = $node_id
+                    SET n:Entity, n.embedding = $embedding
+                    """,
+                    user_id=user_id,
+                    node_id=node_id,
+                    embedding=embedding,
+                )
+        logger.success(
+            "Entity embeddings saved to Neo4j",
+            user_id=user_id,
+            count=len(embeddings_map),
+        )
+
     def save_brain_node(self, user_id: str, brain_dict: Dict[str, Any]) -> None:
         """
         MERGE a :Brain node for the user in Neo4j, storing the full brain summary.
 
-        The communities list is serialized to JSON so it survives Neo4j's property
-        type constraints (no nested objects).  Call this after every community
+        The communities list and communities_by_level are serialized to JSON so they
+        survive Neo4j's property type constraints. Call this after every community
         detection run so the brain is permanently persisted and survives Redis TTL
         expiry or cache flushes.
         """
         driver = self._get_driver()
         communities_raw = brain_dict.get("communities", [])
+        communities_by_level = brain_dict.get("communities_by_level")
         props: Dict[str, Any] = {
             "user_id": user_id,
             "document_count": brain_dict.get("document_count", 0),
@@ -392,6 +513,11 @@ class Neo4jService:
             "status": brain_dict.get("status", "ready"),
             "communities_json": json.dumps(communities_raw, default=str),
         }
+        if communities_by_level is not None:
+            props["communities_by_level_json"] = json.dumps(
+                [c if isinstance(c, dict) else getattr(c, "model_dump", lambda: c)() for c in communities_by_level],
+                default=str,
+            )
         with driver.session(database=self._database) as session:
             self._ensure_brain_index(session)
             session.run(
@@ -422,10 +548,19 @@ class Neo4jService:
                 return None
             props = dict(record["b"])
             communities_json = props.pop("communities_json", "[]")
+            communities_by_level_json = props.pop("communities_by_level_json", None)
             try:
                 communities = json.loads(communities_json)
             except Exception:
                 communities = []
+            try:
+                communities_by_level = (
+                    json.loads(communities_by_level_json)
+                    if communities_by_level_json
+                    else None
+                )
+            except Exception:
+                communities_by_level = None
             return {
                 "user_id": props.get("user_id", user_id),
                 "document_count": props.get("document_count", 0),
@@ -435,17 +570,22 @@ class Neo4jService:
                 "last_updated": props.get("last_updated", ""),
                 "status": props.get("status", "ready"),
                 "communities": communities,
+                "communities_by_level": communities_by_level,
             }
 
     def delete_user_data(self, user_id: str) -> None:
         """
         Permanently delete all Neo4j data for the user: entity nodes, relationships,
-        and the Brain node. Used for "Clear Brain" / start from scratch.
+        Community nodes, and the Brain node. Used for "Clear Brain" / start from scratch.
         """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             session.run(
                 "MATCH (n) WHERE n.user_id = $user_id DETACH DELETE n",
+                user_id=user_id,
+            )
+            session.run(
+                "MATCH (c:Community {user_id: $user_id}) DETACH DELETE c",
                 user_id=user_id,
             )
             session.run(

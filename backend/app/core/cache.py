@@ -145,6 +145,11 @@ def cache_key_community_brain(user_id: str) -> str:
     return f"community:brain:{user_id}"
 
 
+def cache_key_pipeline_job(pipeline_job_id: str) -> str:
+    """Key for a long-running graph pipeline job (community detection, summarization, embedding)."""
+    return f"pipeline:job:{pipeline_job_id}"
+
+
 # Default TTLs (seconds)
 DOCUMENT_TTL = 24 * 60 * 60  # 24 hours
 EXTRACTION_JOB_TTL = 60 * 60  # 1 hour
