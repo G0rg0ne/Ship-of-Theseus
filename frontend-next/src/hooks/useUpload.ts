@@ -213,7 +213,7 @@ export function useUpload(token: string | null) {
               if (status.step === "embedding") pipelineState = "embedding";
               setState(pipelineState);
               setProgress({
-                completed: status.step_index - 1,
+                completed: Math.max(0, status.step_index - 1),
                 total: status.total_steps,
                 message: status.message,
               });
