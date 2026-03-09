@@ -42,13 +42,15 @@ export function useUpload(token: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  const reset = useCallback(() => {
+  const reset = useCallback((options?: { keepGraph?: boolean }) => {
     setState("idle");
     setProgress(null);
     setJobId(null);
     setPipelineJobId(null);
     setDocumentName(null);
-    setGraph(null);
+    if (!options?.keepGraph) {
+      setGraph(null);
+    }
     setError(null);
     setSelectedFile(null);
   }, []);

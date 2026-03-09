@@ -71,7 +71,7 @@ export function PdfUpload({ token, onSaveComplete }: PdfUploadProps) {
       if (onSaveComplete) {
         await Promise.resolve(onSaveComplete());
       }
-      reset();
+      reset({ keepGraph: true });
     } catch (err) {
       setSaveError(
         err instanceof Error
