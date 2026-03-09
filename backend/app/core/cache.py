@@ -69,7 +69,8 @@ async def cache_get(key: str) -> Any:
     if redis:
         try:
             raw = await redis.get(key)
-            return _deserialize(raw)
+            if raw is not None:
+                return _deserialize(raw)
         except Exception as e:
             logger.warning("Redis get failed, using in-memory fallback", key=key, error=str(e))
             _clear_redis_client()

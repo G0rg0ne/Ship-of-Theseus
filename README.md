@@ -37,7 +37,7 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 - 📄 PDF document upload and text extraction
 - 🔍 **Knowledge graph extraction**: "Process Document" runs entity then relationship extraction; shows entity + relationship counts. If extraction fails or times out, the user sees a clear error and a **Try again** option.
 - 🔗 Relationship extraction (auto-triggered after entities); constrained to extracted entities only; graph-ready output (nodes + edges)
-- 📦 Redis cache (documents, extraction jobs, relationship jobs, community brain); in-memory fallback when Redis is not set
+- 📦 Redis cache (documents, extraction jobs, relationship jobs, community brain); in-memory fallback when Redis is not set or when Redis is unavailable, with per-key in-memory fallback on Redis misses
 - 🗄️ **Neo4j graph database**: Persist extracted knowledge graphs per document. After processing, the user first sees a **per‑document graph preview** (with entity + relationship counts and community colouring when the pipeline has finished) and can then choose to keep it in the brain. Nodes are tagged with `user_id` and `document_name`.
 - 🧠 **Community Detection / Knowledge Brain (GraphRAG):** Saving a document graph now automatically triggers the **full GraphRAG pipeline** in the background: hierarchical community detection (Leaf → Mid → Root), LLM summarization per community, and entity + summary embedding with **text-embedding-3-small**. Pipeline progress is tracked in Redis and surfaced in the UI (community detection → summarization → embedding). The merged knowledge brain across all documents is stored in Neo4j and cached in Redis with `communities_by_level` summaries.
 - 🚀 FastAPI backend with modular architecture
