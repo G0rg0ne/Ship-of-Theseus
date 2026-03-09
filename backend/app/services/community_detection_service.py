@@ -357,7 +357,6 @@ def build_user_brain(
     nodes: List[Dict[str, Any]],
     edges: List[Dict[str, Any]],
     document_count: int,
-    *,
     hierarchical: bool = True,
 ) -> Tuple[UserBrain, List[Dict[str, Any]], List[Dict[str, Any]]]:
     """

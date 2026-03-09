@@ -117,7 +117,6 @@ async def cache_delete(key: str) -> None:
     if redis:
         try:
             await redis.delete(key)
-            return
         except Exception as e:
             logger.warning("Redis delete failed, using in-memory fallback", key=key, error=str(e))
             _clear_redis_client()
