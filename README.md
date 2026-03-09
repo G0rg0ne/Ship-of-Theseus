@@ -46,6 +46,10 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
 
+### Frontend UX Notes
+
+- The multi-stage processing stepper in the upload flow now correctly shows all stages as completed when the backend pipeline has finished and the UI is in the `preview` or `done` state, matching the 100% progress indicator.
+
 ## 📁 Project Structure
 
 ```

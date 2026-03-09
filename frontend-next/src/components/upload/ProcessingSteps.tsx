@@ -26,7 +26,12 @@ export function ProcessingSteps({
   entityCount,
   relationshipCount,
 }: ProcessingStepsProps) {
-  const activeIndex = STAGES.findIndex((s) => s.id === state);
+  const rawIndex = STAGES.findIndex((s) => s.id === state);
+
+  const activeIndex =
+    rawIndex === -1 && (state === "preview" || state === "done")
+      ? STAGES.length
+      : rawIndex;
 
   const pct =
     progress && progress.total > 0
