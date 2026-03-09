@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings
 def _parse_origins(value: str) -> List[str]:
     """Parse comma-separated origins string into a list."""
     if not value or not value.strip():
-        return ["http://localhost:8501"]
+        return ["http://localhost:3000"]
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # CORS - stored as string from env (e.g. "http://localhost:8501,http://localhost:3000")
-    ALLOWED_ORIGINS: str = "http://localhost:8501,http://localhost:3000,http://127.0.0.1:8501,http://127.0.0.1:3000"
+    # CORS - stored as string from env (e.g. "http://localhost:3000,http://localhost:8000")
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     
     @property
     def allowed_origins_list(self) -> List[str]:

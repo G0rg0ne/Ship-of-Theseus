@@ -102,7 +102,7 @@ services:
     env_file:
       - .env
     ports:
-      - "${FRONTEND_PORT:-8501}:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_started

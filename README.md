@@ -93,19 +93,12 @@ Ship-of-Theseus/
 │   ├── package.json
 │   ├── next.config.ts
 │   └── Dockerfile
-├── frontend/                    # Legacy Streamlit app (reference)
-│   ├── app.py
-│   ├── components/
-│   ├── services/api_client.py
-│   └── ...
 ├── shared/                      # Shared utilities (ready for expansion)
 ├── tests/                       # Test files
-│   ├── backend/
-│   └── frontend/
+│   └── backend/
 ├── logs/                        # Application logs (auto-generated)
 │   ├── app_YYYY-MM-DD.log      # Backend daily logs
-│   ├── errors_YYYY-MM-DD.log   # Backend error logs
-│   └── frontend_YYYY-MM-DD.log # Frontend daily logs
+│   └── errors_YYYY-MM-DD.log   # Backend error logs
 ├── scripts/                     # Helper scripts
 │   ├── ensure-data-dirs.ps1    # Create .data dirs (PowerShell)
 │   └── ensure-data-dirs.sh     # Create .data dirs (Bash/WSL)
@@ -153,7 +146,7 @@ Ship-of-Theseus/
    ```
 
 4. **Access the application**:
-   - Frontend: http://localhost:8501
+   - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
    - Neo4j Browser (optional): http://localhost:7474 (Bolt: localhost:7687)
    - Health check: http://localhost:8000/
@@ -170,7 +163,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 ### Optional Variables (have defaults):
 - `DATA_DIR` - Local directory for Docker data (Redis, Neo4j, PostgreSQL); default `.data`. Used by `docker-compose.yml` and the `scripts/ensure-data-dirs.*` scripts.
 - `DATABASE_URL` - PostgreSQL connection URL for user registration/auth (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus`). **When using Docker Compose, this is overridden automatically** so the backend connects to the `postgres` service; no need to set it in `.env` for Docker.
-- `ALLOWED_ORIGINS` - CORS origins (comma-separated). Default `http://localhost:8501`. For local Next.js dev (port 3000) use e.g. `http://localhost:3000` or `http://localhost:3000,http://localhost:8501`
+- `ALLOWED_ORIGINS` - CORS origins (comma-separated). Default `http://localhost:3000`. For additional origins add them comma-separated (e.g. `http://localhost:3000,http://localhost:8000`)
 - `NEXT_PUBLIC_API_URL` - Backend API base URL for the Next.js frontend (e.g. `http://localhost:8000` when running frontend locally). **In production, this MUST be set to a browser-accessible public URL (for example `https://api.yourdomain.com`) and MUST NOT use Docker-internal hostnames like `http://backend:8000`, because this value is baked into the client-side bundle at build time.**
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
 - `DEBUG` - Debug mode (default: `False`)
@@ -204,17 +197,13 @@ npm install
 cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL=http://localhost:8000
 npm run dev
 ```
-The app runs at http://localhost:3000 (dark theme by default). Add a `brain-example.png` image under `frontend-next/public/` to show an example knowledge brain on the welcome page. For the legacy Streamlit UI: `cd frontend && pip install -r requirements.txt && streamlit run app.py` (port 8501).
+The app runs at http://localhost:3000 (dark theme by default). Add a `brain-example.png` image under `frontend-next/public/` to show an example knowledge brain on the welcome page.
 
 ## 🧪 Testing
 
 ```bash
 # Backend tests
 cd backend
-pytest
-
-# Frontend tests
-cd frontend
 pytest
 
 # Run with coverage
@@ -325,7 +314,7 @@ docker-compose down -v
 The project follows a modular architecture:
 
 - **Backend**: FastAPI with clean separation of concerns (routes, services, schemas, core)
-- **Frontend**: Streamlit 1.41+ with wide layout, upload/processing state machine, knowledge-graph explorer (search/filters/sort, context in expanders, Entities tab, JSON download), optional Knowledge Base browser for saved graphs
+- **Frontend**: Next.js 14 (TypeScript, Tailwind CSS, shadcn/ui) with a dark nautical UI; welcome page with animated node constellation, auth panel, and a 3-panel dashboard (upload/documents, Knowledge Brain force-directed graph, Ask your brain chat)
 - **Shared**: Common utilities that can be used by both services
 - **Tests**: Comprehensive test coverage for both services
 - **Logging**: Loguru-based logging with automatic rotation, compression, and colored console output
@@ -345,21 +334,12 @@ logger.error("Error message")
 logger.exception("Exception with traceback")
 ```
 
-**Frontend logging:**
-```python
-from utils.logger import logger
-
-logger.info("User action")
-logger.success("Operation completed")
-```
-
 **Features:**
 - Automatic file rotation at midnight
 - Log retention: 30 days (general), 90 days (errors)
 - Automatic compression of old logs
 - Colored console output for better readability
 - Thread-safe logging
-- Separate log files for backend and frontend
 - Debug level logging in files, INFO level in console
 
 See [.cursor/rules/README.mdc](.cursor/rules/README.mdc) for detailed development guidelines and project standards.
