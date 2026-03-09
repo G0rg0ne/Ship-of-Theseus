@@ -241,16 +241,16 @@ export function useUpload(token: string | null) {
               total: status.total_steps,
               message: "Graph pipeline complete. Brain updated.",
             });
-            // Refresh graph from Neo4j so it includes community assignments
+            // Refresh graph from Neo4j so it includes community assignments.
+            // This is awaited before resolving so callers (e.g. PdfUpload) do not
+            // call reset() and clear state before the enriched graph is applied.
             if (graph.filename) {
-              void (async () => {
-                try {
-                  const enriched = await api.getGraphFromNeo4j(graph.filename, token);
-                  setGraph(enriched);
-                } catch {
-                  // fall back to extracted graph
-                }
-              })();
+              try {
+                const enriched = await api.getGraphFromNeo4j(graph.filename, token);
+                setGraph(enriched);
+              } catch {
+                // fall back to extracted graph
+              }
             }
             resolve();
           } catch (err) {
