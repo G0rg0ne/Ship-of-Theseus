@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrainMetrics } from "./BrainMetrics";
@@ -16,14 +16,18 @@ interface BrainSectionProps {
 }
 
 export function BrainSection({ token, onBrainCleared }: BrainSectionProps) {
-  const { brain, isLoading, refresh, remove, mutate } = useBrain(token);
+  const { brain, isLoading, refresh, remove } = useBrain(token);
   const [highlightedCommunityId, setHighlightedCommunityId] = useState<string | null>(null);
   const [panelCommunity, setPanelCommunity] = useState<CommunityInfo | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [graphData, setGraphData] = useState<{ documents: api.DocumentListItem[]; graphs: api.DocumentGraph[] } | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
 
-  const loadGraphData = async () => {
+  const loadGraphData = useCallback(async () => {
+    if (!token || !brain) {
+      setGraphData(null);
+      return;
+    }
     setGraphLoading(true);
     try {
       const documents = await api.listNeo4jDocuments(token);
@@ -42,7 +46,15 @@ export function BrainSection({ token, onBrainCleared }: BrainSectionProps) {
     } finally {
       setGraphLoading(false);
     }
-  };
+  }, [token, brain]);
+
+  useEffect(() => {
+    if (!brain) {
+      setGraphData(null);
+      return;
+    }
+    void loadGraphData();
+  }, [brain, loadGraphData]);
 
   const graphInput: GraphDataInput | null = useMemo(() => {
     if (!brain || !graphData) return null;
@@ -86,14 +98,6 @@ export function BrainSection({ token, onBrainCleared }: BrainSectionProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadGraphData}
-            disabled={graphLoading || !brain}
-          >
-            {graphLoading ? "Loading…" : "Load graph"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
             onClick={handleRefresh}
             disabled={isLoading || !brain}
           >
@@ -106,6 +110,9 @@ export function BrainSection({ token, onBrainCleared }: BrainSectionProps) {
         {brain && (
           <div className="space-y-2">
             <h3 className="text-sm font-medium">Graph</h3>
+            {graphLoading && (
+              <p className="text-xs text-muted-foreground">Loading graph data…</p>
+            )}
             <BrainGraph
               input={graphInput}
               highlightedCommunityId={highlightedCommunityId}

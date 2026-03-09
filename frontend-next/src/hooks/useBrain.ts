@@ -18,7 +18,7 @@ export function useBrain(token: string | null) {
   const refresh = async () => {
     if (!token) return null;
     try {
-      const updated = await api.triggerCommunityDetection(token);
+      const updated = await api.getUserBrain(token);
       mutate(updated, false);
       return updated;
     } catch {
