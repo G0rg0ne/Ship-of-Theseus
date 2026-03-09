@@ -12,6 +12,7 @@ from neo4j import GraphDatabase, Driver
 from app.core.config import settings
 from app.core.logger import logger
 from app.schemas.relationships import DocumentGraph, GraphEdge, GraphNode
+from app.services.embedding_service import EmbeddingService
 
 
 def _type_to_label(entity_type: str) -> str:
@@ -46,6 +47,7 @@ class Neo4jService:
         self._password = password or settings.NEO4J_PASSWORD
         self._database = database or settings.NEO4J_DATABASE
         self._driver: Optional[Driver] = None
+        self._vector_dim_cache: Optional[int] = None
 
     def _get_driver(self) -> Driver:
         """Lazy-init and return the Neo4j driver."""
@@ -375,11 +377,51 @@ class Neo4jService:
     # ------------------------------------------------------------------
     # Vector indexes and embedding storage (GraphRAG)
     # ------------------------------------------------------------------
+    def _get_vector_dimensions(self) -> int:
+        """
+        Determine the embedding vector dimension for the active EMBEDDING_MODEL.
 
-    VECTOR_DIMENSIONS = 1536  # text-embedding-3-small
+        Prefers a static model→dimension map and falls back to probing the
+        EmbeddingService when the model is unknown.
+        """
+        if self._vector_dim_cache is not None:
+            return self._vector_dim_cache
+
+        model_name = getattr(settings, "EMBEDDING_MODEL", "text-embedding-3-small")
+
+        # Known OpenAI embedding dimensions; extend this map as needed.
+        model_dims: Dict[str, int] = {
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+            "text-embedding-ada-002": 1536,
+        }
+
+        dim = model_dims.get(model_name)
+
+        if dim is None:
+            try:
+                embedding_service = EmbeddingService()
+                dim = embedding_service.get_embedding_dimension()
+                logger.info(
+                    "Derived embedding dimension from EmbeddingService",
+                    model=model_name,
+                    dimensions=dim,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to determine embedding dimension from EmbeddingService; falling back to default",
+                    model=model_name,
+                    error=str(e),
+                )
+                # Last-resort default to preserve previous behavior.
+                dim = 1536
+
+        self._vector_dim_cache = dim
+        return dim
 
     def ensure_vector_indexes(self, session: Any) -> None:
         """Create vector indexes for Entity.embedding and Community.embedding if they do not exist."""
+        dim = self._get_vector_dimensions()
         try:
             session.run(
                 """
@@ -390,7 +432,7 @@ class Neo4jService:
                     `vector.similarity_function`: 'cosine'
                 }}
                 """,
-                dim=self.VECTOR_DIMENSIONS,
+                dim=dim,
             )
         except Exception as e:
             logger.warning("Entity vector index creation skipped or failed", error=str(e))
@@ -404,7 +446,7 @@ class Neo4jService:
                     `vector.similarity_function`: 'cosine'
                 }}
                 """,
-                dim=self.VECTOR_DIMENSIONS,
+                dim=dim,
             )
         except Exception as e:
             logger.warning(

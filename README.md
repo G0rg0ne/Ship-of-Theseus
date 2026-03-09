@@ -193,7 +193,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
   - `NEO4J_PASSWORD` - Neo4j password (set in `.env` only; no password appears in docker-compose)
   - `NEO4J_DATABASE` - Database name (default: `neo4j`)
 - **GraphRAG (community summarization and embedding):**
-  - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`)
+  - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`). Neo4j vector index dimensions are derived from this model at runtime so index configuration always matches the active embedding model.
   - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)
 
 ## 🏃 Running Locally (Development)

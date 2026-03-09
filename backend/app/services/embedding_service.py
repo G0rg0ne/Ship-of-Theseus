@@ -36,7 +36,7 @@ def entity_to_embed_text(node: Dict[str, Any]) -> str:
 
 
 class EmbeddingService:
-    """Batch embedding via OpenAI text-embedding-3-small."""
+    """Batch embedding via OpenAI embeddings API."""
 
     def __init__(
         self,
@@ -48,6 +48,7 @@ class EmbeddingService:
             settings, "EMBEDDING_MODEL", "text-embedding-3-small"
         )
         self._embeddings: OpenAIEmbeddings | None = None
+        self._dimension: int | None = None
 
     def _get_embeddings(self) -> OpenAIEmbeddings:
         if self._embeddings is None:
@@ -56,6 +57,28 @@ class EmbeddingService:
                 openai_api_key=self._api_key or "",
             )
         return self._embeddings
+
+    def get_embedding_dimension(self) -> int:
+        """
+        Return the embedding vector dimension for the configured model.
+
+        The dimension is determined once by probing a single embedding call and
+        then cached for subsequent uses.
+        """
+        if self._dimension is not None:
+            return self._dimension
+
+        embeddings_client = self._get_embeddings()
+        # Use a small probe text to avoid unnecessary token usage.
+        vector = embeddings_client.embed_query("dimension probe")
+        dim = len(vector)
+        self._dimension = dim
+        logger.info(
+            "Resolved embedding dimension",
+            model=self._model,
+            dimensions=dim,
+        )
+        return dim
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """
