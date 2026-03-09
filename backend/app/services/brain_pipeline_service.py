@@ -121,8 +121,19 @@ def embed_and_persist_brain(
     """
     # Embedding: entities (Identity Card) then community summaries
     embedding_svc = EmbeddingService(api_key=settings.OPENAI_API_KEY)
-    entity_embeddings = embedding_svc.embed_entities(nodes)
-    neo4j.save_entity_embeddings(user_id, entity_embeddings)
+
+    # Group entity nodes by document so embeddings are written to the correct
+    # document-scoped nodes (id is only guaranteed unique per document).
+    nodes_by_document: Dict[str, List[Dict[str, Any]]] = {}
+    for n in nodes:
+        doc_name = n.get("document_name")
+        if not doc_name:
+            continue
+        nodes_by_document.setdefault(doc_name, []).append(n)
+
+    for document_name, doc_nodes in nodes_by_document.items():
+        entity_embeddings = embedding_svc.embed_entities(doc_nodes)
+        neo4j.save_entity_embeddings(user_id, document_name, entity_embeddings)
 
     summary_texts = [c.get("summary") or "" for c in hierarchical_raw]
     summary_vectors = embedding_svc.embed_texts(summary_texts)

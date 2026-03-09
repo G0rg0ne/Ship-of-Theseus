@@ -508,11 +508,14 @@ class Neo4jService:
     def save_entity_embeddings(
         self,
         user_id: str,
+        document_name: str,
         embeddings_map: Dict[str, List[float]],
     ) -> None:
         """
-        Set embedding property on entity nodes. Adds :Entity label if missing.
-        embeddings_map: node_id -> list of floats (vector).
+        Set embedding property on entity nodes for a single document.
+
+        Adds :Entity label if missing.
+        embeddings_map: node_id -> list of floats (vector) scoped to document_name.
         """
         if not embeddings_map:
             return
@@ -522,10 +525,14 @@ class Neo4jService:
             for node_id, embedding in embeddings_map.items():
                 session.run(
                     """
-                    MATCH (n) WHERE n.user_id = $user_id AND n.id = $node_id
+                    MATCH (n)
+                    WHERE n.user_id = $user_id
+                      AND n.document_name = $document_name
+                      AND n.id = $node_id
                     SET n:Entity, n.embedding = $embedding
                     """,
                     user_id=user_id,
+                    document_name=document_name,
                     node_id=node_id,
                     embedding=embedding,
                 )
