@@ -19,13 +19,7 @@ from app.core.cache import (
 from app.core.logger import logger
 from app.models.user import User
 from app.schemas.relationships import DocumentGraph
-from app.services.brain_pipeline_service import (
-    NoUserGraphError,
-    detect_communities_and_assign,
-    embed_and_persist_brain,
-    summarize_hierarchy,
-    warm_brain_cache,
-)
+from app.services.brain_pipeline_service import NoUserGraphError, run_full_brain_pipeline_for_user
 from app.services.neo4j_service import Neo4jService
 
 router = APIRouter()
@@ -120,87 +114,21 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
         user_id=user_id,
         pipeline_job_id=pipeline_job_id,
     )
-    # Heavy stages (summarization, embedding, Neo4j writes) are offloaded to a
-    # worker thread so we don't block the main event loop.
-    import asyncio
     total_steps = 3  # community_detection, summarizing, embedding
+
+    async def _on_step(step: str, step_index: int, total: int, message: str) -> None:
+        await _set_pipeline_status(
+            pipeline_job_id,
+            status="running",
+            step=step,
+            step_index=step_index,
+            total_steps=total,
+            message=message,
+            user_id=user_id,
+        )
+
     try:
-        # Step 1: community detection and assignments
-        await _set_pipeline_status(
-            pipeline_job_id,
-            status="running",
-            step="community_detection",
-            step_index=1,
-            total_steps=total_steps,
-            message="Detecting communities…",
-            user_id=user_id,
-        )
-
-        try:
-            brain, hierarchical_raw, nodes, edges, node_map = await detect_communities_and_assign(
-                user_id, neo4j
-            )
-        except NoUserGraphError:
-            logger.info(
-                "No nodes found for community detection",
-                user_id=user_id,
-                pipeline_job_id=pipeline_job_id,
-            )
-            await _set_pipeline_status(
-                pipeline_job_id,
-                status="failed",
-                step="community_detection",
-                step_index=1,
-                total_steps=total_steps,
-                message="No nodes found in Neo4j. Add documents to the knowledge base first.",
-                user_id=user_id,
-                error="no_nodes",
-            )
-            return
-
-        # Step 2: summarization (leaf → mid → root)
-        await _set_pipeline_status(
-            pipeline_job_id,
-            status="running",
-            step="summarizing",
-            step_index=2,
-            total_steps=total_steps,
-            message="Summarizing communities…",
-            user_id=user_id,
-        )
-
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            summarize_hierarchy,
-            hierarchical_raw,
-            node_map,
-            edges,
-        )
-
-        # Step 3: embeddings (entities + community summaries)
-        await _set_pipeline_status(
-            pipeline_job_id,
-            status="running",
-            step="embedding",
-            step_index=3,
-            total_steps=total_steps,
-            message="Embedding entities and community summaries…",
-            user_id=user_id,
-        )
-
-        brain, brain_dict = await loop.run_in_executor(
-            None,
-            embed_and_persist_brain,
-            user_id,
-            neo4j,
-            brain,
-            hierarchical_raw,
-            nodes,
-        )
-
-        # Also warm the Redis cache so the next read is instant
-        await warm_brain_cache(user_id, brain_dict)
+        await run_full_brain_pipeline_for_user(user_id, neo4j, on_step=_on_step)
 
         await _set_pipeline_status(
             pipeline_job_id,
@@ -215,7 +143,22 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             "Community brain saved, enriched and cached",
             user_id=user_id,
             pipeline_job_id=pipeline_job_id,
-            communities=brain.community_count,
+        )
+    except NoUserGraphError:
+        logger.info(
+            "No nodes found for community detection",
+            user_id=user_id,
+            pipeline_job_id=pipeline_job_id,
+        )
+        await _set_pipeline_status(
+            pipeline_job_id,
+            status="failed",
+            step="community_detection",
+            step_index=1,
+            total_steps=total_steps,
+            message="No nodes found in Neo4j. Add documents to the knowledge base first.",
+            user_id=user_id,
+            error="no_nodes",
         )
     except Exception as exc:
         await _set_pipeline_status(

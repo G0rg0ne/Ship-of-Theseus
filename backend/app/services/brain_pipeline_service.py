@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from typing import Any, Dict, List, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from app.core.cache import cache_key_community_brain, cache_set
 from app.core.config import settings
@@ -32,6 +32,9 @@ BRAIN_CACHE_TTL = 86400  # 24 hours
 
 class NoUserGraphError(Exception):
     """Raised when a user has no merged graph in Neo4j."""
+
+
+StepCallback = Callable[[str, int, int, str], Awaitable[None]]
 
 
 async def detect_communities_and_assign(
@@ -232,16 +235,26 @@ async def warm_brain_cache(user_id: str, brain_dict: Dict[str, Any]) -> None:
 async def run_full_brain_pipeline_for_user(
     user_id: str,
     neo4j: Neo4jService,
+    on_step: Optional[StepCallback] = None,
 ) -> UserBrain:
     """
     High-level helper: run the full GraphRAG pipeline for a user.
 
     Used by POST /api/community/detect to execute the pipeline synchronously.
     """
+    total_steps = 3  # community_detection, summarizing, embedding
+
+    async def _notify(step: str, step_index: int, message: str) -> None:
+        if on_step is None:
+            return
+        await on_step(step, step_index, total_steps, message)
+
+    await _notify("community_detection", 1, "Detecting communities…")
     brain, hierarchical_raw, nodes, edges, node_map = await detect_communities_and_assign(
         user_id, neo4j
     )
 
+    await _notify("summarizing", 2, "Summarizing communities…")
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(
         None,
@@ -250,6 +263,7 @@ async def run_full_brain_pipeline_for_user(
         node_map,
         edges,
     )
+    await _notify("embedding", 3, "Embedding entities and community summaries…")
     brain, brain_dict = await loop.run_in_executor(
         None,
         embed_and_persist_brain,

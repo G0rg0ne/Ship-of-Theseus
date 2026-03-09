@@ -145,6 +145,11 @@ export function useUpload(token: string | null) {
       throw new Error("Nothing to add to brain yet.");
     }
 
+    // Track whether a more specific error message has already been set
+    // inside the pipeline polling logic so we don't overwrite it in the
+    // outer catch block below.
+    let hasExplicitPipelineError = false;
+
     try {
       setState("saving_graph");
       setProgress({
@@ -164,7 +169,6 @@ export function useUpload(token: string | null) {
         total: 3,
         message: "Starting brain pipeline…",
       });
-
       const pipelineStart = Date.now();
 
       await new Promise<void>((resolve, reject) => {
@@ -173,6 +177,7 @@ export function useUpload(token: string | null) {
             setState("error");
             setError("Graph pipeline timed out.");
             setProgress(null);
+            hasExplicitPipelineError = true;
             reject(new Error("Graph pipeline timed out."));
             return;
           }
@@ -224,6 +229,7 @@ export function useUpload(token: string | null) {
               setState("error");
               setError(status.error || "Graph pipeline failed.");
               setProgress(null);
+              hasExplicitPipelineError = true;
               reject(new Error(status.error || "Graph pipeline failed."));
               return;
             }
@@ -248,17 +254,16 @@ export function useUpload(token: string | null) {
             }
             resolve();
           } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Failed to fetch pipeline status.";
             setState("error");
-            setError(
-              err instanceof Error
-                ? err.message
-                : "Failed to fetch pipeline status."
-            );
+            setError(message);
             setProgress(null);
+            hasExplicitPipelineError = true;
             reject(
               err instanceof Error
                 ? err
-                : new Error("Failed to fetch pipeline status.")
+                : new Error(message)
             );
           }
         };
@@ -268,9 +273,12 @@ export function useUpload(token: string | null) {
       if (!(err instanceof Error)) {
         throw err;
       }
-      // State and error message have already been set above where appropriate.
-      if (!error) {
+      // If the polling logic already set a specific error message/state, keep it.
+      // Otherwise, ensure we surface this error to the user here.
+      if (!hasExplicitPipelineError) {
+        setState("error");
         setError(err.message);
+        setProgress(null);
       }
       throw err;
     }
