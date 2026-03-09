@@ -4,7 +4,7 @@ After a document graph is saved, the full GraphRAG pipeline (community
 detection → summarization → embedding) is automatically triggered in the
 background to rebuild the user's merged knowledge brain.
 """
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
@@ -76,21 +76,6 @@ async def _get_graph_from_cache(job_id: str, user_id: str) -> DocumentGraph:
         raise HTTPException(status_code=404, detail="Graph result not available")
     return DocumentGraph(**result)
 
-
-def _nodes_and_edges_for_community(
-    community: Dict[str, Any],
-    node_map: Dict[str, Dict[str, Any]],
-    edges: List[Dict[str, Any]],
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Return (nodes, edges) for a community given its node_ids."""
-    node_ids = set(community.get("node_ids") or [])
-    community_nodes = [node_map[nid] for nid in node_ids if nid in node_map]
-    community_edges = [
-        e
-        for e in edges
-        if e.get("source") in node_ids and e.get("target") in node_ids
-    ]
-    return community_nodes, community_edges
 
 
 BRAIN_CACHE_TTL = 86400  # 24 hours
@@ -197,25 +182,13 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
         summarization = SummarizationService(api_key=settings.OPENAI_API_KEY)
         summaries_by_cid: Dict[str, str] = {}
         for level in (CommunityLevel.leaf, CommunityLevel.mid, CommunityLevel.root):
-            for c in hierarchical_raw:
-                if c.get("level") != level.value:
-                    continue
-                community_nodes, community_edges = _nodes_and_edges_for_community(
-                    c, node_map, edges
-                )
-                child_ids = c.get("child_community_ids") or []
-                child_summaries = [
-                    summaries_by_cid[cid] for cid in child_ids if cid in summaries_by_cid
-                ]
-                summary = summarization.summarize_community(
-                    c["community_id"],
-                    level,
-                    community_nodes,
-                    community_edges,
-                    child_summaries=child_summaries if child_summaries else None,
-                )
-                summaries_by_cid[c["community_id"]] = summary
-                c["summary"] = summary
+            summarization.summarize_level(
+                hierarchical_raw,
+                level,
+                node_map,
+                edges,
+                summaries_by_cid,
+            )
 
         # Step 3: embeddings (entities + community summaries)
         await _set_pipeline_status(
