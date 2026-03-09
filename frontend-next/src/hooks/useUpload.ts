@@ -25,6 +25,13 @@ export interface ProcessingProgress {
   message: string;
 }
 
+type SaveGraphToNeo4jResponse = {
+  ok: boolean;
+  document_name: string;
+  pipeline_job_id: string;
+  message: string;
+};
+
 export function useUpload(token: string | null) {
   const [state, setState] = useState<ProcessingState>("idle");
   const [progress, setProgress] = useState<ProcessingProgress | null>(null);
@@ -117,11 +124,9 @@ export function useUpload(token: string | null) {
                   total: 1,
                   message: "Saving graph to knowledge base…",
                 });
-                const saveResult = (await api.saveGraphToNeo4j(
-                  job_id,
-                  token
-                )) as any;
-                const pipelineId: string | undefined = saveResult?.pipeline_job_id;
+                const rawSaveResult = await api.saveGraphToNeo4j(job_id, token);
+                const { pipeline_job_id: pipelineId } =
+                  rawSaveResult as SaveGraphToNeo4jResponse;
                 if (!pipelineId) {
                   throw new Error("Pipeline job id missing from save response.");
                 }
