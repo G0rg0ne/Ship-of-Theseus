@@ -50,6 +50,10 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 
 - The multi-stage processing stepper in the upload flow now correctly shows all stages as completed when the backend pipeline has finished and the UI is in the `preview` or `done` state, matching the 100% progress indicator.
 
+### Backend Pipeline Notes
+
+- The full GraphRAG brain pipeline (hierarchical community detection, summarization, embedding, brain persistence, and cache warming) is implemented once in a shared service (`brain_pipeline_service`) and reused by both the manual trigger endpoint and the background job started after saving a document graph, avoiding drift between the two code paths.
+
 ## 📁 Project Structure
 
 ```

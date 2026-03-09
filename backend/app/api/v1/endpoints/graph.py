@@ -4,26 +4,29 @@ After a document graph is saved, the full GraphRAG pipeline (community
 detection → summarization → embedding) is automatically triggered in the
 background to rebuild the user's merged knowledge brain.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from app.api.v1.deps import get_current_user
 from app.core.cache import (
     cache_get,
-    cache_key_community_brain,
-    cache_key_extraction_job,
     cache_key_pipeline_job,
+    cache_key_extraction_job,
     cache_key_relationship_job,
     cache_set,
 )
-from app.core.config import settings
+from app.core.logger import logger
 from app.models.user import User
-from app.schemas.community import CommunityLevel, HierarchicalCommunity, UserBrain
 from app.schemas.relationships import DocumentGraph
-from app.services.embedding_service import EmbeddingService
+from app.services.brain_pipeline_service import (
+    NoUserGraphError,
+    detect_communities_and_assign,
+    embed_and_persist_brain,
+    summarize_hierarchy,
+    warm_brain_cache,
+)
 from app.services.neo4j_service import Neo4jService
-from app.services.summarization_service import SummarizationService
 
 router = APIRouter()
 
@@ -78,7 +81,6 @@ async def _get_graph_from_cache(job_id: str, user_id: str) -> DocumentGraph:
 
 
 
-BRAIN_CACHE_TTL = 86400  # 24 hours
 PIPELINE_JOB_TTL = 60 * 60  # 1 hour
 
 
@@ -113,9 +115,6 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
 
     Called as a FastAPI BackgroundTask after saving a document graph.
     """
-    from app.core.logger import logger
-    from app.services.community_detection_service import build_user_brain
-
     logger.info(
         "Background full graph pipeline started",
         user_id=user_id,
@@ -123,7 +122,7 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
     )
     total_steps = 3  # community_detection, summarizing, embedding
     try:
-        # Step 1: community detection
+        # Step 1: community detection and assignments
         await _set_pipeline_status(
             pipeline_job_id,
             status="running",
@@ -134,8 +133,11 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             user_id=user_id,
         )
 
-        nodes, edges = neo4j.get_user_graph(user_id)
-        if not nodes:
+        try:
+            brain, hierarchical_raw, nodes, edges, node_map = await detect_communities_and_assign(
+                user_id, neo4j
+            )
+        except NoUserGraphError:
             logger.info(
                 "No nodes found for community detection",
                 user_id=user_id,
@@ -153,21 +155,6 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             )
             return
 
-        doc_count = neo4j.get_user_document_count(user_id)
-
-        brain, flat_for_neo4j, hierarchical_raw = build_user_brain(
-            user_id, nodes, edges, doc_count, hierarchical=True
-        )
-
-        # Write community_id onto every entity node (leaf-level only)
-        neo4j.save_community_assignments(user_id, flat_for_neo4j)
-
-        node_map = {
-            n.get("id") or n.get("label", ""): n
-            for n in nodes
-            if n.get("id") or n.get("label")
-        }
-
         # Step 2: summarization (leaf → mid → root)
         await _set_pipeline_status(
             pipeline_job_id,
@@ -179,16 +166,7 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             user_id=user_id,
         )
 
-        summarization = SummarizationService(api_key=settings.OPENAI_API_KEY)
-        summaries_by_cid: Dict[str, str] = {}
-        for level in (CommunityLevel.leaf, CommunityLevel.mid, CommunityLevel.root):
-            summarization.summarize_level(
-                hierarchical_raw,
-                level,
-                node_map,
-                edges,
-                summaries_by_cid,
-            )
+        summarize_hierarchy(hierarchical_raw, node_map, edges)
 
         # Step 3: embeddings (entities + community summaries)
         await _set_pipeline_status(
@@ -201,46 +179,12 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             user_id=user_id,
         )
 
-        embedding_svc = EmbeddingService(api_key=settings.OPENAI_API_KEY)
-        entity_embeddings = embedding_svc.embed_entities(nodes)
-        neo4j.save_entity_embeddings(user_id, entity_embeddings)
-
-        summary_texts = [c.get("summary") or "" for c in hierarchical_raw]
-        summary_vectors = embedding_svc.embed_texts(summary_texts)
-        for c, vec in zip(hierarchical_raw, summary_vectors):
-            c["embedding"] = vec
-        neo4j.save_community_nodes(user_id, hierarchical_raw)
-
-        # Build enriched brain with communities_by_level
-        communities_by_level: List[HierarchicalCommunity] = [
-            HierarchicalCommunity(
-                community_id=c["community_id"],
-                level=CommunityLevel(c["level"]),
-                parent_community_id=c.get("parent_community_id"),
-                node_count=len(c.get("node_ids") or []),
-                top_entities=c.get("top_entities", []),
-                keywords=c.get("keywords", []),
-                document_sources=c.get("document_sources", []),
-                summary=c.get("summary"),
-                embedding=c.get("embedding"),
-            )
-            for c in hierarchical_raw
-        ]
-        brain.communities_by_level = communities_by_level
-        brain_dict = brain.model_dump()
-        brain_dict["communities_by_level"] = [
-            h.model_dump() for h in communities_by_level
-        ]
-
-        # Persist the brain permanently in Neo4j as a Brain node
-        neo4j.save_brain_node(user_id, brain_dict)
+        brain, brain_dict = embed_and_persist_brain(
+            user_id, neo4j, brain, hierarchical_raw, nodes
+        )
 
         # Also warm the Redis cache so the next read is instant
-        await cache_set(
-            cache_key_community_brain(user_id),
-            brain_dict,
-            ttl_seconds=BRAIN_CACHE_TTL,
-        )
+        await warm_brain_cache(user_id, brain_dict)
 
         await _set_pipeline_status(
             pipeline_job_id,
@@ -287,7 +231,6 @@ async def save_graph_to_neo4j(
     Save the extracted graph for the given extraction job to Neo4j,
     then trigger the full GraphRAG pipeline in the background.
     """
-    from app.core.logger import logger
     from uuid import uuid4
 
     user_id = current_user.email or current_user.username
