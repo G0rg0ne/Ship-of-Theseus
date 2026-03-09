@@ -48,9 +48,10 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 
 ### Frontend UX Notes
 
-- The multi-stage processing stepper in the upload flow now correctly shows all stages as completed when the backend pipeline has finished and the UI is in the `preview` or `done` state, matching the 100% progress indicator.
+- The multi-stage processing stepper in the upload flow now shows only the upload and extraction stages as completed while the UI is in the `preview` state, and marks all stages as completed only once the backend brain pipeline has finished and the UI reaches the `done` state, matching the 100% progress indicator.
 - After entity and relationship extraction complete, the upload panel moves into a `preview` state that shows a per-document graph preview. Clicking **Add to Brain** from this state saves the graph to Neo4j and runs the full GraphRAG pipeline; when the pipeline finishes, the dashboard brain metrics/graph refresh and the upload panel returns to the idle state.
 - The upload hook waits for the enriched per-document graph to be loaded from Neo4j before completing the **Add to Brain** action, so the preview state is not overwritten by stale graph data after the panel has been reset.
+- While the long-running brain pipeline is starting (e.g. `saving_graph`, `detecting_communities`, `summarizing`, `embedding`) but before the first backend poll has populated numeric progress, the processing stepper shows a contextual status message (\"Saving graph to knowledge base…\", \"Starting brain pipeline…\", etc.) instead of an empty header with a 0% bar.
 
 ### Backend Pipeline Notes
 

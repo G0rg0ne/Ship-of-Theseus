@@ -26,26 +26,63 @@ export function ProcessingSteps({
   entityCount,
   relationshipCount,
 }: ProcessingStepsProps) {
+  const isPipelineState =
+    state === "saving_graph" ||
+    state === "detecting_communities" ||
+    state === "summarizing" ||
+    state === "embedding";
+
+  const fallbackMessage: string | null = (() => {
+    switch (state) {
+      case "saving_graph":
+        return "Saving graph to knowledge base…";
+      case "detecting_communities":
+        return "Starting brain pipeline…";
+      case "summarizing":
+        return "Summarizing communities…";
+      case "embedding":
+        return "Embedding entities and summaries…";
+      default:
+        return null;
+    }
+  })();
+
+  // If we're in a long-running pipeline state but the first poll has not
+  // yet populated progress, synthesize a minimal progress object so the
+  // UI shows a status message instead of an empty header + 0% bar.
+  const effectiveProgress: ProcessingProgress | null =
+    progress ??
+    (isPipelineState && fallbackMessage
+      ? {
+          completed: 0,
+          total: 1,
+          message: fallbackMessage,
+        }
+      : null);
+
   const rawIndex = STAGES.findIndex((s) => s.id === state);
 
   const activeIndex =
-    rawIndex === -1 && (state === "preview" || state === "done")
+    state === "preview"
+      ? STAGES.findIndex((s) => s.id === "extracting_relationships")
+      : state === "done"
       ? STAGES.length
       : rawIndex;
 
   const pct =
-    progress && progress.total > 0
-      ? Math.round((progress.completed / progress.total) * 100)
+    effectiveProgress && effectiveProgress.total > 0
+      ? Math.round((effectiveProgress.completed / effectiveProgress.total) * 100)
       : 0;
   const displayPct = Math.min(100, Math.max(0, pct));
 
-  const showProgressBar = progress != null && state !== "idle" && state !== "error";
+  const showProgressBar =
+    effectiveProgress != null && state !== "idle" && state !== "error";
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
         <span>Processing pipeline</span>
-        {progress && <span>{progress.message}</span>}
+        {effectiveProgress && <span>{effectiveProgress.message}</span>}
       </div>
 
       <ol className="flex flex-wrap gap-1.5 text-[11px]">
