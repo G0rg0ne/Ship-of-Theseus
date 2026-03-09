@@ -459,8 +459,10 @@ class Neo4jService:
         communities: List[Dict[str, Any]],
     ) -> None:
         """
-        MERGE :Community nodes for the user. Each community has community_id, level,
-        parent_community_id, user_id, summary, and optionally embedding (list of floats).
+        MERGE :Community nodes derived from a user's graph.
+
+        Each community has community_id, level, parent_community_id, derived_user_id,
+        summary, and optionally embedding (list of floats).
         """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
@@ -476,7 +478,7 @@ class Neo4jService:
                 keywords = c.get("keywords", [])
                 doc_sources = c.get("document_sources", [])
                 props: Dict[str, Any] = {
-                    "user_id": user_id,
+                    "derived_user_id": user_id,
                     "community_id": cid,
                     "level": level,
                     "parent_community_id": parent or "",
@@ -490,11 +492,11 @@ class Neo4jService:
                     props["embedding"] = embedding
                 session.run(
                     """
-                    MERGE (c:Community {user_id: $user_id, community_id: $community_id})
+                    MERGE (c:Community {community_id: $community_id, derived_user_id: $derived_user_id})
                     SET c += $props
                     """,
-                    user_id=user_id,
                     community_id=cid,
+                    derived_user_id=user_id,
                     props=props,
                 )
         logger.success(
@@ -627,7 +629,7 @@ class Neo4jService:
                 user_id=user_id,
             )
             session.run(
-                "MATCH (c:Community {user_id: $user_id}) DETACH DELETE c",
+                "MATCH (c:Community {derived_user_id: $user_id}) DETACH DELETE c",
                 user_id=user_id,
             )
             session.run(
