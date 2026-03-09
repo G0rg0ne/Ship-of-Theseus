@@ -639,8 +639,4 @@ class Neo4jService:
                 "MATCH (c:Community {derived_user_id: $user_id}) DETACH DELETE c",
                 user_id=user_id,
             )
-            session.run(
-                "MATCH (b:Brain {user_id: $user_id}) DETACH DELETE b",
-                user_id=user_id,
-            )
         logger.info("User data deleted from Neo4j", user_id=user_id)
