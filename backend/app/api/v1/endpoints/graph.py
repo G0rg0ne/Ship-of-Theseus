@@ -140,11 +140,15 @@ async def _background_full_pipeline(
     try:
         last_sent_completed: int = -1
         debounce_every: int = 5
+        last_level: Optional[CommunityLevel] = None
 
         async def _on_summarization_progress(
             level: CommunityLevel, completed: int, total: int
         ) -> None:
-            nonlocal last_sent_completed
+            nonlocal last_sent_completed, last_level
+            if last_level is not None and level != last_level:
+                last_sent_completed = -1
+            last_level = level
             if completed != total and (completed - last_sent_completed) < debounce_every:
                 return
             last_sent_completed = completed
