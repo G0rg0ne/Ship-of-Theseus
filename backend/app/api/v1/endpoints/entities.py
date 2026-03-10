@@ -172,9 +172,11 @@ async def _run_extraction_task(
             ent = None
 
         if ent is None:
+            extraction_succeeded = False
             try:
                 async with entity_sem:
                     ent = await extractor.extract_entities_async(text, i)
+                extraction_succeeded = True
             except Exception as exc:
                 logger.error("Chunk entity extraction failed", chunk_id=i, error=str(exc))
                 ent = ExtractedEntities(
@@ -186,11 +188,18 @@ async def _run_extraction_task(
                     key_terms=[],
                 )
             # Cache entities by chunk hash for retries on identical content
-            try:
-                await cache_set(ent_cache_key, ent.model_dump(), ttl_seconds=EXTRACTION_CHUNK_CACHE_TTL)
-            except Exception:
-                # Cache failures should never fail extraction
-                pass
+            # Only cache when the LLM extraction succeeded so transient errors
+            # don't poison the cache with empty results.
+            if extraction_succeeded:
+                try:
+                    await cache_set(
+                        ent_cache_key,
+                        ent.model_dump(),
+                        ttl_seconds=EXTRACTION_CHUNK_CACHE_TTL,
+                    )
+                except Exception:
+                    # Cache failures should never fail extraction
+                    pass
 
         extracted_by_index[i] = ent
         async with entity_lock:
