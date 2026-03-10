@@ -84,14 +84,19 @@ async def get_all_users(
     )
     users = result.scalars().all()
 
+    # Default to zero documents for all users; fill from Neo4j when available.
+    doc_counts: dict[str, int] = {}
+    if neo4j and users:
+        user_ids = [str(user.id) for user in users]
+        try:
+            doc_counts = neo4j.get_document_counts_for_user_ids(user_ids) or {}
+        except Exception:
+            # On Neo4j errors, fall back to 0 documents for all users.
+            doc_counts = {}
+
     out: List[UserAdminView] = []
     for user in users:
-        doc_count = 0
-        if neo4j:
-            try:
-                doc_count = neo4j.get_user_document_count(str(user.id))
-            except Exception:
-                pass
+        doc_count = doc_counts.get(str(user.id), 0)
         out.append(
             UserAdminView(
                 id=user.id,

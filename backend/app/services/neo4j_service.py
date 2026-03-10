@@ -398,13 +398,56 @@ class Neo4jService:
         with driver.session(database=self._database) as session:
             result = session.run(
                 """
-                MATCH (n) WHERE n.user_id = $user_id AND n.document_name IS NOT NULL
+                MATCH (n)
+                WHERE n.user_id = $user_id AND n.document_name IS NOT NULL
                 RETURN count(DISTINCT n.document_name) AS cnt
                 """,
                 user_id=user_id,
             )
             record = result.single()
             return int(record["cnt"]) if record else 0
+
+    def get_document_counts_for_user_ids(
+        self,
+        user_ids: List[str],
+    ) -> Dict[str, int]:
+        """
+        Return a mapping of user_id -> distinct document count for the given users.
+
+        This is the bulk equivalent of get_user_document_count and is intended for
+        admin views to avoid N+1 Neo4j queries when listing many users.
+        """
+        if not user_ids:
+            return {}
+
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                MATCH (n)
+                WHERE n.user_id IN $user_ids AND n.document_name IS NOT NULL
+                RETURN n.user_id AS user_id, count(DISTINCT n.document_name) AS cnt
+                """,
+                user_ids=user_ids,
+            )
+
+            counts: Dict[str, int] = {}
+            for record in result:
+                uid = record.get("user_id")
+                if uid is None:
+                    continue
+                cnt = record.get("cnt")
+                try:
+                    counts[str(uid)] = int(cnt) if cnt is not None else 0
+                except (TypeError, ValueError):
+                    continue
+
+        logger.info(
+            "Loaded per-user document counts from Neo4j",
+            user_count=len(user_ids),
+            result_count=len(counts),
+        )
+        return counts
 
     def save_community_assignments(
         self,
