@@ -3,6 +3,10 @@
 import { useCallback, useState } from "react";
 import * as api from "@/lib/api";
 
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
 const POLL_INTERVAL_MS = 2000;
 const TIMEOUT_MS = 600_000; // 10 min
 
@@ -101,9 +105,9 @@ export function useUpload(token: string | null) {
 
           setState("extracting_relationships");
           setProgress({
-            completed: total,
+            completed: 0,
             total,
-            message: "Building relationships from entities…",
+            message: "Extracting relationships…",
           });
 
           const graphPoll = async (): Promise<void> => {
@@ -113,6 +117,41 @@ export function useUpload(token: string | null) {
               setProgress(null);
               return;
             }
+            try {
+              const relRes = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/entities/extract/relationships/status/${encodeURIComponent(
+                  `${job_id}_rel`
+                )}`,
+                {
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                  },
+                }
+              );
+              if (relRes.ok) {
+                const relStatus = (await relRes.json()) as {
+                  status: "running" | "done" | "failed" | "pending" | "completed";
+                  total_chunks: number;
+                  completed_chunks: number;
+                };
+                if (
+                  relStatus.status === "running" ||
+                  relStatus.status === "pending"
+                ) {
+                  const relTotal = Math.max(relStatus.total_chunks, 1);
+                  const relCompleted = relStatus.completed_chunks;
+                  setProgress({
+                    completed: relCompleted,
+                    total: relTotal,
+                    message: `Extracting relationships: ${relCompleted}/${relTotal} chunks`,
+                  });
+                }
+              }
+            } catch {
+              // Best-effort; still continue polling for graph readiness
+            }
+
             const graphData = await api.getExtractionGraph(job_id, token);
             if (graphData) {
               setGraph(graphData);

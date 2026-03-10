@@ -192,9 +192,16 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 - `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used. **When using Docker Compose, this is overridden to `redis://redis:6379/0`** so the backend reaches the Redis service.
 - `OPENAI_API_KEY` - Required for entity extraction; if unset, extraction endpoints return 503.
 - `ENTITY_EXTRACTION_MODEL` - LLM model for extraction (default: `gpt-4o-mini`)
-- `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel (default: `5`)
-- `RELATIONSHIP_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel for relationship extraction (default: `5`)
+- `DOCUMENT_CHUNK_SIZE` - Document chunk size (default: `800`)
+- `DOCUMENT_CHUNK_OVERLAP` - Document chunk overlap (default: `150`)
+- `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed per batch (default: `10`)
+- `ENTITY_EXTRACTION_CONCURRENCY` - Max concurrent entity LLM calls (default: `20`)
+- `RELATIONSHIP_EXTRACTION_BATCH_SIZE` - Chunks processed per batch for relationship extraction (default: `10`)
+- `RELATIONSHIP_EXTRACTION_CONCURRENCY` - Max concurrent relationship LLM calls (default: `20`)
 - `AUTO_EXTRACT_RELATIONSHIPS` - Auto-trigger relationship extraction after entity extraction (default: `true`)
+- `LLM_RETRY_MAX_ATTEMPTS` - Retries for transient LLM failures (default: `3`)
+- `LLM_RETRY_BASE_DELAY_MS` - Base backoff delay in ms (default: `500`)
+- `LLM_RETRY_MAX_DELAY_MS` - Max backoff delay in ms (default: `5000`)
 - **Neo4j** (optional; graph persistence disabled if unavailable):
   - `NEO4J_URI` - Bolt URL. **When using Docker Compose, this is overridden to `bolt://neo4j:7687`**; use `bolt://localhost:7687` for local dev.
   - `NEO4J_USER` - Neo4j username (set in `.env`; no default in compose)

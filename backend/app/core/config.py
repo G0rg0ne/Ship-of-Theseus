@@ -59,15 +59,26 @@ class Settings(BaseSettings):
     
     # Redis (optional; in-memory fallback when not set)
     REDIS_URL: Optional[str] = None
+
+    # Document chunking
+    DOCUMENT_CHUNK_SIZE: int = 800
+    DOCUMENT_CHUNK_OVERLAP: int = 150
     
     # LLM Configuration
     OPENAI_API_KEY: Optional[str] = None
     ENTITY_EXTRACTION_MODEL: str = "gpt-4o-mini"
-    ENTITY_EXTRACTION_BATCH_SIZE: int = 5
+    ENTITY_EXTRACTION_BATCH_SIZE: int = 10
+    ENTITY_EXTRACTION_CONCURRENCY: int = 20
 
     # Relationship extraction (runs after entity extraction)
-    RELATIONSHIP_EXTRACTION_BATCH_SIZE: int = 5
+    RELATIONSHIP_EXTRACTION_BATCH_SIZE: int = 10
+    RELATIONSHIP_EXTRACTION_CONCURRENCY: int = 20
     AUTO_EXTRACT_RELATIONSHIPS: bool = True
+
+    # LLM retry/backoff (for transient 429/5xx)
+    LLM_RETRY_MAX_ATTEMPTS: int = 3
+    LLM_RETRY_BASE_DELAY_MS: int = 500
+    LLM_RETRY_MAX_DELAY_MS: int = 5_000
 
     # Neo4j graph database (persistent storage for extracted knowledge graphs)
     NEO4J_URI: str = "bolt://localhost:7687"

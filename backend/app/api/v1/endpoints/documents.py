@@ -12,6 +12,7 @@ from io import BytesIO
 
 from app.api.v1.deps import get_current_user
 from app.models.user import User
+from app.core.config import settings
 from app.core.logger import logger
 from app.core.cache import (
     cache_get,
@@ -47,9 +48,14 @@ def _extract_text_from_pdf(file_bytes: bytes) -> str:
 
 def _chunk_text(text: str) -> List[str]:
     """Chunk text into smaller chunks."""
+    chunk_size = int(getattr(settings, "DOCUMENT_CHUNK_SIZE", 800) or 800)
+    chunk_overlap = int(getattr(settings, "DOCUMENT_CHUNK_OVERLAP", 150) or 150)
+    # Guard against invalid overlap
+    if chunk_overlap >= chunk_size:
+        chunk_overlap = max(0, chunk_size // 5)
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=150,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         length_function=len,
         is_separator_regex=False,
     )

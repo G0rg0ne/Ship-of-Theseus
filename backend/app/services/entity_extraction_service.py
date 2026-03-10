@@ -3,6 +3,7 @@ Entity extraction service using LangChain and LLM.
 Supports parallel chunk processing with progress tracking via Redis.
 """
 import asyncio
+import random
 from datetime import datetime
 from typing import List
 
@@ -52,9 +53,37 @@ class EntityExtractionService:
         self, text: str, chunk_id: int = 0
     ) -> ExtractedEntities:
         """Extract entities from a single chunk (async for parallel use)."""
-        result = await self.chain.ainvoke({"text": text})
+        result = await self._ainvoke_with_retry({"text": text}, chunk_id=chunk_id)
         result.chunk_id = chunk_id
         return result
+
+    async def _ainvoke_with_retry(self, payload: dict, *, chunk_id: int) -> ExtractedEntities:
+        attempts = max(1, int(getattr(settings, "LLM_RETRY_MAX_ATTEMPTS", 3) or 3))
+        base_ms = int(getattr(settings, "LLM_RETRY_BASE_DELAY_MS", 500) or 500)
+        max_ms = int(getattr(settings, "LLM_RETRY_MAX_DELAY_MS", 5_000) or 5_000)
+
+        last_exc: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self.chain.ainvoke(payload)
+            except Exception as exc:
+                last_exc = exc if isinstance(exc, Exception) else Exception(str(exc))
+                if attempt >= attempts:
+                    break
+                # Exponential backoff with jitter
+                delay_ms = min(max_ms, base_ms * (2 ** (attempt - 1)))
+                jitter = random.uniform(0.75, 1.25)
+                await asyncio.sleep((delay_ms * jitter) / 1000.0)
+                logger.warning(
+                    "Entity extraction transient failure; retrying",
+                    chunk_id=chunk_id,
+                    attempt=attempt,
+                    max_attempts=attempts,
+                    error=str(last_exc),
+                )
+
+        assert last_exc is not None
+        raise last_exc
 
     async def extract_from_chunks_parallel(
         self,
@@ -72,6 +101,8 @@ class EntityExtractionService:
         batch_size = getattr(
             settings, "ENTITY_EXTRACTION_BATCH_SIZE", 5
         ) or 5
+        concurrency = getattr(settings, "ENTITY_EXTRACTION_CONCURRENCY", batch_size) or batch_size
+        semaphore = asyncio.Semaphore(max(1, int(concurrency)))
 
         job_payload = {
             "status": "running",
@@ -97,7 +128,7 @@ class EntityExtractionService:
             for i in range(0, n, batch_size):
                 batch = chunks[i : i + batch_size]
                 tasks = [
-                    self.extract_entities_async(chunk, i + j)
+                    self._extract_entities_async_limited(semaphore, chunk, i + j)
                     for j, chunk in enumerate(batch)
                 ]
                 batch_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -154,3 +185,9 @@ class EntityExtractionService:
             job_payload["error"] = str(e)
             job_payload["result"] = None
             await cache_set(key, job_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+
+    async def _extract_entities_async_limited(
+        self, semaphore: asyncio.Semaphore, text: str, chunk_id: int
+    ) -> ExtractedEntities:
+        async with semaphore:
+            return await self.extract_entities_async(text, chunk_id)
