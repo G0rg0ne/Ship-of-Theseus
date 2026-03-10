@@ -309,8 +309,18 @@ class Neo4jService:
             rec = r.single()
             if rec:
                 community_count = int(rec["c"]) if rec["c"] is not None else 0
-            docs = self.list_documents()
-            document_count = len(docs)
+            # Count distinct (user_id, document_name) pairs so that documents
+            # with the same name belonging to different users are not collapsed.
+            r = session.run(
+                """
+                MATCH (n)
+                WHERE n.user_id IS NOT NULL AND n.document_name IS NOT NULL
+                RETURN count(DISTINCT [n.user_id, n.document_name]) AS c
+                """
+            )
+            rec = r.single()
+            if rec:
+                document_count = int(rec["c"]) if rec["c"] is not None else 0
         return entity_count, edge_count, community_count, document_count
 
     def delete_document_graph(

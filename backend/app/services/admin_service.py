@@ -8,6 +8,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import _get_redis
+from app.core.logger import logger
 from app.models.user import User
 from app.schemas.admin import (
     PlatformStats,
@@ -43,8 +44,11 @@ async def get_platform_stats(
             total_entities, total_relationships, total_communities, total_documents = (
                 neo4j.get_global_counts()
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Neo4j get_global_counts failed in get_platform_stats, using fallback zeros: {}",
+                e,
+            )
 
     avg_docs = (total_documents / total_users) if total_users else 0.0
 
@@ -90,8 +94,12 @@ async def get_all_users(
         user_ids = [str(user.id) for user in users]
         try:
             doc_counts = neo4j.get_document_counts_for_user_ids(user_ids) or {}
-        except Exception:
+        except Exception as e:
             # On Neo4j errors, fall back to 0 documents for all users.
+            logger.warning(
+                "Neo4j get_document_counts_for_user_ids failed in get_all_users, using 0 document counts: {}",
+                e,
+            )
             doc_counts = {}
 
     out: List[UserAdminView] = []
@@ -161,8 +169,11 @@ async def get_system_health(
             neo4j_node_count, neo4j_edge_count, neo4j_community_count, _ = (
                 neo4j.get_global_counts()
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Neo4j get_global_counts failed in get_system_health, using fallback zeros: {}",
+                e,
+            )
 
     return SystemHealth(
         services=services,
