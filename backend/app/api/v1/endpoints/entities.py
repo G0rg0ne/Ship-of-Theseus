@@ -115,6 +115,11 @@ async def _run_extraction_task(
         "result": None,
         "error": None,
         "created_at": datetime.utcnow().isoformat() + "Z",
+        # Track per-chunk failures and warnings so callers can distinguish
+        # between fully successful runs and partial failures.
+        "failed_chunks": [],
+        "warnings": [],
+        "completed_successfully": False,
     }
     await cache_set(entity_key, entity_payload, ttl_seconds=EXTRACTION_JOB_TTL)
 
@@ -179,6 +184,23 @@ async def _run_extraction_task(
                 extraction_succeeded = True
             except Exception as exc:
                 logger.error("Chunk entity extraction failed", chunk_id=i, error=str(exc))
+                # Record the failure for this chunk so the job status can
+                # surface partial failures instead of silently swallowing them.
+                async with entity_lock:
+                    failed = entity_payload.get("failed_chunks") or []
+                    failed.append(i)
+                    entity_payload["failed_chunks"] = failed
+
+                    warnings = entity_payload.get("warnings") or []
+                    warnings.append(f"Chunk {i} entity extraction failed: {exc}")
+                    entity_payload["warnings"] = warnings
+
+                    # Persist the updated failure information without changing
+                    # the caching semantics (we still do not cache this chunk).
+                    await cache_set(entity_key, entity_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+
+                # Provide an empty entity set for downstream aggregation so the
+                # document result structure remains consistent.
                 ent = ExtractedEntities(
                     chunk_id=i,
                     people=[],
@@ -264,7 +286,10 @@ async def _run_extraction_task(
             chunk_entities=extracted_by_index,
             extracted_at=datetime.utcnow().isoformat() + "Z",
         )
+
+        failed_chunks = entity_payload.get("failed_chunks") or []
         entity_payload["status"] = "completed"
+        entity_payload["completed_successfully"] = len(failed_chunks) == 0
         entity_payload["completed_chunks"] = n
         entity_payload["result"] = doc_entities.model_dump()
         entity_payload["error"] = None
@@ -366,6 +391,12 @@ async def get_extraction_status(
         filename=job.get("filename"),
         created_at=job.get("created_at"),
         error=job.get("error"),
+        failed_chunks=job.get("failed_chunks", []),
+        warnings=job.get("warnings", []),
+        completed_successfully=job.get(
+            "completed_successfully",
+            job.get("status") == "completed" and not job.get("error"),
+        ),
     )
 
 
