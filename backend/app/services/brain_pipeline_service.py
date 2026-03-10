@@ -35,6 +35,7 @@ class NoUserGraphError(Exception):
 
 
 StepCallback = Callable[[str, int, int, str], Awaitable[None]]
+SummarizationProgressCallback = Callable[[CommunityLevel, int, int], Awaitable[None]]
 
 
 async def detect_communities_and_assign(
@@ -106,6 +107,37 @@ def summarize_hierarchy(
             node_map,
             edges,
             summaries_by_cid,
+        )
+
+
+async def summarize_hierarchy_async(
+    hierarchical_raw: List[Dict[str, Any]],
+    node_map: Dict[str, Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    *,
+    on_level_progress: Optional[Callable[[CommunityLevel, int, int], Awaitable[None]]] = None,
+) -> None:
+    """
+    Async summarization of all communities at leaf, mid, and root levels.
+
+    Mutates hierarchical_raw in-place, adding a "summary" field to each community.
+    """
+    summarization = SummarizationService(api_key=settings.OPENAI_API_KEY)
+    summaries_by_cid: Dict[str, str] = {}
+
+    for level in (CommunityLevel.leaf, CommunityLevel.mid, CommunityLevel.root):
+        async def _on_progress(completed: int, total: int) -> None:
+            if on_level_progress is None:
+                return
+            await on_level_progress(level, completed, total)
+
+        await summarization.summarize_level_async(
+            hierarchical_raw,
+            level,
+            node_map,
+            edges,
+            summaries_by_cid,
+            on_progress=_on_progress,
         )
 
 
@@ -236,6 +268,7 @@ async def run_full_brain_pipeline_for_user(
     user_id: str,
     neo4j: Neo4jService,
     on_step: Optional[StepCallback] = None,
+    on_summarization_progress: Optional[SummarizationProgressCallback] = None,
 ) -> UserBrain:
     """
     High-level helper: run the full GraphRAG pipeline for a user.
@@ -255,15 +288,15 @@ async def run_full_brain_pipeline_for_user(
     )
 
     await _notify("summarizing", 2, "Summarizing communities…")
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None,
-        summarize_hierarchy,
+
+    await summarize_hierarchy_async(
         hierarchical_raw,
         node_map,
         edges,
+        on_level_progress=on_summarization_progress,
     )
     await _notify("embedding", 3, "Embedding entities and community summaries…")
+    loop = asyncio.get_running_loop()
     brain, brain_dict = await loop.run_in_executor(
         None,
         embed_and_persist_brain,

@@ -203,6 +203,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 - **GraphRAG (community summarization and embedding):**
   - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`). Neo4j vector index dimensions are derived from this model at runtime so index configuration always matches the active embedding model.
   - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)
+  - `COMMUNITY_SUMMARIZATION_CONCURRENCY` - Max concurrent community-summary LLM calls per hierarchy level (default: `50`). Tune down if you hit rate limits; tune up for faster summarization.
 
 ## 🏃 Running Locally (Development)
 
@@ -267,7 +268,7 @@ pytest --cov=app --cov-report=html
 - `GET /graph/{document_name}` - Get graph from Neo4j by document name (requires auth)
 - `DELETE /graph/{document_name}` - Delete document graph from Neo4j (requires auth)
 - `GET /graph/health` - Neo4j connectivity check (requires auth)
-- `GET /graph/pipeline/status/{pipeline_job_id}` - Get status of a long‑running graph pipeline job; returns the current `step` (`community_detection`, `summarizing`, `embedding`), `step_index`, `total_steps`, `status` (`running|done|failed`), and `message` (requires auth)
+- `GET /graph/pipeline/status/{pipeline_job_id}` - Get status of a long‑running graph pipeline job; returns the current `step` (`community_detection`, `summarizing`, `embedding`), `step_index`, `total_steps`, `status` (`running|done|failed`), and `message`. During `summarizing`, the response also includes `community_progress` with `{ completed, total }` so the UI can show per-community progress (requires auth)
 
 ### Community Detection / Knowledge Brain Endpoints (GraphRAG)
 - `GET /community/brain` - Get current user's knowledge brain (includes `communities_by_level` with summaries when full pipeline has run; cache: Redis → Neo4j Brain node → recompute fallback; requires auth). The dashboard **Refresh** button uses this read-only endpoint to update what is shown to the user.
@@ -287,6 +288,8 @@ Example (Docker Compose + PostgreSQL):
 ```bash
 docker compose exec postgres psql -U postgres -d shipoftheseus -c "UPDATE users SET is_admin = true WHERE username = 'admin-dev';"
 ```
+
+**Implementation detail:** Neo4j nodes are scoped by `user_id` using the user's **PostgreSQL UUID** (not email/username). If you have older Neo4j data created before this change, per-user stats may show 0 until you re-save/reprocess documents or migrate existing Neo4j nodes to the UUID-based `user_id`.
 
 ## 🐳 Docker, Redis, PostgreSQL, and Neo4j
 

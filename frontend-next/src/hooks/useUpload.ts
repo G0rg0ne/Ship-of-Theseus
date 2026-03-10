@@ -198,7 +198,7 @@ export function useUpload(token: string | null) {
 
             // The background pipeline may not have written status yet; treat 404 as transient.
             if (res.status === 404) {
-              setTimeout(pollPipeline, POLL_INTERVAL_MS);
+              setTimeout(pollPipeline, 500);
               return;
             }
 
@@ -212,6 +212,7 @@ export function useUpload(token: string | null) {
               total_steps: number;
               message: string;
               error?: string;
+              community_progress?: { completed: number; total: number };
             };
 
             if (status.status === "running") {
@@ -219,12 +220,25 @@ export function useUpload(token: string | null) {
               if (status.step === "summarizing") pipelineState = "summarizing";
               if (status.step === "embedding") pipelineState = "embedding";
               setState(pipelineState);
+              const summaryProgress = status.community_progress;
+              const completed =
+                status.step === "summarizing" && summaryProgress
+                  ? summaryProgress.completed
+                  : Math.max(0, status.step_index - 1);
+              const total =
+                status.step === "summarizing" && summaryProgress
+                  ? Math.max(1, summaryProgress.total)
+                  : status.total_steps;
               setProgress({
-                completed: Math.max(0, status.step_index - 1),
-                total: status.total_steps,
+                completed,
+                total,
                 message: status.message,
               });
-              setTimeout(pollPipeline, POLL_INTERVAL_MS);
+              const nextPollMs =
+                status.step === "summarizing" || status.step === "embedding"
+                  ? POLL_INTERVAL_MS
+                  : 1000;
+              setTimeout(pollPipeline, nextPollMs);
               return;
             }
             if (status.status === "failed") {

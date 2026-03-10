@@ -371,18 +371,26 @@ class Neo4jService:
         """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
+            rows: List[Dict[str, Any]] = []
             for community in communities:
-                cid = community["community_id"]
-                for node_id in community.get("node_ids", []):
-                    session.run(
-                        """
-                        MATCH (n {user_id: $user_id, id: $node_id})
-                        SET n.community_id = $community_id
-                        """,
-                        user_id=user_id,
-                        node_id=node_id,
-                        community_id=cid,
-                    )
+                cid = community.get("community_id")
+                if not cid:
+                    continue
+                for node_id in community.get("node_ids", []) or []:
+                    if not node_id:
+                        continue
+                    rows.append({"node_id": node_id, "community_id": cid})
+
+            if rows:
+                session.run(
+                    """
+                    UNWIND $rows AS row
+                    MATCH (n {user_id: $user_id, id: row.node_id})
+                    SET n.community_id = row.community_id
+                    """,
+                    user_id=user_id,
+                    rows=rows,
+                )
         logger.success(
             "Community assignments saved to Neo4j",
             user_id=user_id,
@@ -523,8 +531,11 @@ class Neo4jService:
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             self.ensure_vector_indexes(session)
+            rows: List[Dict[str, Any]] = []
             for c in communities:
                 cid = c.get("community_id") or ""
+                if not cid:
+                    continue
                 level = c.get("level") or "leaf"
                 parent = c.get("parent_community_id")
                 summary = c.get("summary") or ""
@@ -549,14 +560,16 @@ class Neo4jService:
                     props["summary_fingerprint"] = summary_fingerprint
                 if embedding is not None:
                     props["embedding"] = embedding
+                rows.append({"community_id": cid, "derived_user_id": user_id, "props": props})
+
+            if rows:
                 session.run(
                     """
-                    MERGE (c:Community {community_id: $community_id, derived_user_id: $derived_user_id})
-                    SET c += $props
+                    UNWIND $rows AS row
+                    MERGE (c:Community {community_id: row.community_id, derived_user_id: row.derived_user_id})
+                    SET c += row.props
                     """,
-                    community_id=cid,
-                    derived_user_id=user_id,
-                    props=props,
+                    rows=rows,
                 )
         logger.success(
             "Community nodes saved to Neo4j",
@@ -582,39 +595,46 @@ class Neo4jService:
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             self.ensure_vector_indexes(session)
+            rows: List[Dict[str, Any]] = []
             for node_id, embedding in embeddings_map.items():
+                if not node_id:
+                    continue
+                row: Dict[str, Any] = {"node_id": node_id, "embedding": embedding}
                 if fingerprint_map is not None:
-                    fingerprint = fingerprint_map.get(node_id)
-                    session.run(
-                        """
-                        MATCH (n)
-                        WHERE n.user_id = $user_id
-                          AND n.document_name = $document_name
-                          AND n.id = $node_id
-                        SET n:Entity,
-                            n.embedding = $embedding,
-                            n.embedding_fingerprint = $fingerprint
-                        """,
-                        user_id=user_id,
-                        document_name=document_name,
-                        node_id=node_id,
-                        embedding=embedding,
-                        fingerprint=fingerprint,
-                    )
-                else:
-                    session.run(
-                        """
-                        MATCH (n)
-                        WHERE n.user_id = $user_id
-                          AND n.document_name = $document_name
-                          AND n.id = $node_id
-                        SET n:Entity, n.embedding = $embedding
-                        """,
-                        user_id=user_id,
-                        document_name=document_name,
-                        node_id=node_id,
-                        embedding=embedding,
-                    )
+                    row["fingerprint"] = fingerprint_map.get(node_id)
+                rows.append(row)
+
+            if fingerprint_map is not None:
+                session.run(
+                    """
+                    UNWIND $rows AS row
+                    MATCH (n)
+                    WHERE n.user_id = $user_id
+                      AND n.document_name = $document_name
+                      AND n.id = row.node_id
+                    SET n:Entity,
+                        n.embedding = row.embedding,
+                        n.embedding_fingerprint = row.fingerprint
+                    """,
+                    user_id=user_id,
+                    document_name=document_name,
+                    rows=rows,
+                )
+            else:
+                session.run(
+                    """
+                    UNWIND $rows AS row
+                    MATCH (n)
+                    WHERE n.user_id = $user_id
+                      AND n.document_name = $document_name
+                      AND n.id = row.node_id
+                    SET n:Entity,
+                        n.embedding = row.embedding
+                    """,
+                    user_id=user_id,
+                    document_name=document_name,
+                    rows=rows,
+                )
         logger.success(
             "Entity embeddings saved to Neo4j",
             user_id=user_id,
