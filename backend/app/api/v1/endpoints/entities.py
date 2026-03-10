@@ -121,7 +121,14 @@ async def _run_extraction_task(
         "warnings": [],
         "completed_successfully": False,
     }
-    await cache_set(entity_key, entity_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+    try:
+        await cache_set(entity_key, entity_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+    except Exception as exc:
+        logger.error(
+            "Failed to initialize entity extraction job in cache",
+            job_id=job_id,
+            error=str(exc),
+        )
 
     relationship_payload: Dict[str, Any] = {
         "status": "pending",
@@ -134,7 +141,14 @@ async def _run_extraction_task(
         "error": None,
         "created_at": datetime.utcnow().isoformat() + "Z",
     }
-    await cache_set(rel_key, relationship_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+    try:
+        await cache_set(rel_key, relationship_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+    except Exception as exc:
+        logger.error(
+            "Failed to initialize relationship extraction job in cache",
+            job_id=rel_job_id,
+            error=str(exc),
+        )
 
     entity_done = 0
     rel_done = 0
@@ -197,7 +211,19 @@ async def _run_extraction_task(
 
                     # Persist the updated failure information without changing
                     # the caching semantics (we still do not cache this chunk).
-                    await cache_set(entity_key, entity_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+                    try:
+                        await cache_set(
+                            entity_key,
+                            entity_payload,
+                            ttl_seconds=EXTRACTION_JOB_TTL,
+                        )
+                    except Exception as cache_exc:
+                        logger.error(
+                            "Failed to update entity extraction failure metadata in cache",
+                            job_id=job_id,
+                            chunk_id=i,
+                            error=str(cache_exc),
+                        )
 
                 # Provide an empty entity set for downstream aggregation so the
                 # document result structure remains consistent.
@@ -227,7 +253,20 @@ async def _run_extraction_task(
         async with entity_lock:
             entity_done += 1
             entity_payload["completed_chunks"] = entity_done
-            await cache_set(entity_key, entity_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+            try:
+                await cache_set(
+                    entity_key,
+                    entity_payload,
+                    ttl_seconds=EXTRACTION_JOB_TTL,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to update entity extraction progress in cache",
+                    job_id=job_id,
+                    chunk_id=i,
+                    completed_chunks=entity_done,
+                    error=str(exc),
+                )
 
         if not getattr(settings, "AUTO_EXTRACT_RELATIONSHIPS", True):
             return
@@ -276,7 +315,20 @@ async def _run_extraction_task(
                 relationship_payload["status"] = "running"
             rel_done += 1
             relationship_payload["completed_chunks"] = rel_done
-            await cache_set(rel_key, relationship_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+            try:
+                await cache_set(
+                    rel_key,
+                    relationship_payload,
+                    ttl_seconds=EXTRACTION_JOB_TTL,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to update relationship extraction progress in cache",
+                    job_id=rel_job_id,
+                    chunk_id=i,
+                    completed_chunks=rel_done,
+                    error=str(exc),
+                )
 
     try:
         await asyncio.gather(*(_process_chunk(i, chunks[i]) for i in range(n)))
@@ -293,7 +345,18 @@ async def _run_extraction_task(
         entity_payload["completed_chunks"] = n
         entity_payload["result"] = doc_entities.model_dump()
         entity_payload["error"] = None
-        await cache_set(entity_key, entity_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+        try:
+            await cache_set(
+                entity_key,
+                entity_payload,
+                ttl_seconds=EXTRACTION_JOB_TTL,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to persist completed entity extraction job in cache",
+                job_id=job_id,
+                error=str(exc),
+            )
 
         if getattr(settings, "AUTO_EXTRACT_RELATIONSHIPS", True):
             graph = rel_extractor.build_graph_from_entities_and_relationships(
@@ -303,13 +366,35 @@ async def _run_extraction_task(
             relationship_payload["completed_chunks"] = n
             relationship_payload["result"] = graph.model_dump()
             relationship_payload["error"] = None
-            await cache_set(rel_key, relationship_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+            try:
+                await cache_set(
+                    rel_key,
+                    relationship_payload,
+                    ttl_seconds=EXTRACTION_JOB_TTL,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to persist completed relationship extraction job in cache",
+                    job_id=rel_job_id,
+                    error=str(exc),
+                )
         else:
             relationship_payload["status"] = "completed"
             relationship_payload["completed_chunks"] = 0
             relationship_payload["result"] = None
             relationship_payload["error"] = None
-            await cache_set(rel_key, relationship_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+            try:
+                await cache_set(
+                    rel_key,
+                    relationship_payload,
+                    ttl_seconds=EXTRACTION_JOB_TTL,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to persist completed relationship extraction job in cache (no auto-extract)",
+                    job_id=rel_job_id,
+                    error=str(exc),
+                )
 
         logger.success(
             "Streamed extraction job completed",
@@ -322,12 +407,34 @@ async def _run_extraction_task(
         entity_payload["status"] = "failed"
         entity_payload["error"] = str(exc)
         entity_payload["result"] = None
-        await cache_set(entity_key, entity_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+        try:
+            await cache_set(
+                entity_key,
+                entity_payload,
+                ttl_seconds=EXTRACTION_JOB_TTL,
+            )
+        except Exception as cache_exc:
+            logger.error(
+                "Failed to persist failed entity extraction job in cache",
+                job_id=job_id,
+                error=str(cache_exc),
+            )
 
         relationship_payload["status"] = "failed"
         relationship_payload["error"] = str(exc)
         relationship_payload["result"] = None
-        await cache_set(rel_key, relationship_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+        try:
+            await cache_set(
+                rel_key,
+                relationship_payload,
+                ttl_seconds=EXTRACTION_JOB_TTL,
+            )
+        except Exception as cache_exc:
+            logger.error(
+                "Failed to persist failed relationship extraction job in cache",
+                job_id=rel_job_id,
+                error=str(cache_exc),
+            )
 
 
 @router.post("/extract", response_model=ExtractionJobStarted)

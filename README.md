@@ -250,7 +250,7 @@ pytest --cov=app --cov-report=html
 
 ### Entity Extraction Endpoints (parallel, progress via Redis)
 - `POST /entities/extract` - Start entity extraction on current document; returns `job_id` (requires auth). Jobs and per-chunk caches are scoped by the user's stable UUID (`str(current_user.id)`). When complete, relationship extraction is auto-started with job_id `{job_id}_rel`.
-- `GET /entities/extract/status/{job_id}` - Get extraction progress: status, `completed_chunks`/`total_chunks`, and any `failed_chunks`/`warnings` recorded during extraction (requires auth). The `completed_successfully` flag is `false` when one or more chunks failed even if the overall job status is `completed`.
+- `GET /entities/extract/status/{job_id}` - Get extraction progress: status, `completed_chunks`/`total_chunks`, and any `failed_chunks`/`warnings` recorded during extraction (requires auth). The `completed_successfully` flag is `false` when one or more chunks failed even if the overall job status is `completed`. Progress and final status snapshots are written to Redis on a **best-effort** basis: failures in `cache_set` are logged via Loguru but never abort the extraction job.
 - `GET /entities/extract/result/{job_id}` - Get extraction result when completed (requires auth; 202 if still running)
 
 ### Relationship Extraction Endpoints (graph-ready: nodes + edges)
