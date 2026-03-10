@@ -48,11 +48,23 @@ def _extract_text_from_pdf(file_bytes: bytes) -> str:
 
 def _chunk_text(text: str) -> List[str]:
     """Chunk text into smaller chunks."""
-    chunk_size = int(getattr(settings, "DOCUMENT_CHUNK_SIZE", 800) or 800)
-    chunk_overlap = int(getattr(settings, "DOCUMENT_CHUNK_OVERLAP", 150) or 150)
-    # Guard against invalid overlap
-    if chunk_overlap >= chunk_size:
-        chunk_overlap = max(0, chunk_size // 5)
+    raw_chunk_size = getattr(settings, "DOCUMENT_CHUNK_SIZE", 800)
+    raw_chunk_overlap = getattr(settings, "DOCUMENT_CHUNK_OVERLAP", 150)
+
+    try:
+        chunk_size = int(raw_chunk_size)
+    except (TypeError, ValueError):
+        chunk_size = 800
+
+    try:
+        chunk_overlap = int(raw_chunk_overlap)
+    except (TypeError, ValueError):
+        chunk_overlap = 150
+
+    # Enforce sane bounds: chunk_size >= 1, 0 <= chunk_overlap <= chunk_size - 1
+    chunk_size = max(1, chunk_size)
+    chunk_overlap = max(0, min(chunk_overlap, chunk_size - 1))
+
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
