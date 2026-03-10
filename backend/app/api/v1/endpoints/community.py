@@ -46,7 +46,7 @@ async def get_user_brain(
     Checks Redis first (fast path), then loads the permanent Brain node from
     Neo4j, and finally falls back to a live recompute if neither exists yet.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
 
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
@@ -102,7 +102,7 @@ async def trigger_community_detection(
     text-embedding-3-small, then persists assignments, community nodes, and
     embeddings to Neo4j. Returns the enriched brain with communities_by_level.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
 
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
@@ -127,7 +127,7 @@ async def delete_user_brain(
     Permanently delete the current user's brain and all their document graphs from Neo4j,
     and clear the brain cache in Redis. Use for "start from scratch".
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
 
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")

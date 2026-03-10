@@ -18,18 +18,6 @@ The project follows a **Graph RAG** (Graph Retrieval-Augmented Generation) desig
 - **Query phase:** A user query can target entity embeddings (specific facts) or community summary embeddings (high-level themes); results are combined into a final response.
 
 LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds both the graph and the vector indexes.
-### Example: Knowledge Graph Visualization
-
-![Example of the knowledge graph extracted from one document](assets/graph_exmp.png)
-
-**Legend:**
-
-- **Blue circles** – *Person* entities
-- **Green squares** – *Organization* entities
-- **Orange diamonds** – *Location* entities
-- **Purple hexagons** – *KeyTerm* or *Topic* nodes
-- **Arrows** – *Relationship* types (labeled edges) extracted by LLM
-- Each graph corresponds to a single document; nodes and relationships are isolated by document filename.
 
 ## Features
 
@@ -45,6 +33,9 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
+ - **Admin portal**: Platform-wide statistics (users, documents, entities, relationships, communities), system health (PostgreSQL, Neo4j, Redis), and user management with optional admin promotion (admin-only; `/admin` in Next.js; `is_admin` on user model). The UI prevents an admin from toggling their own admin status; the backend API also guards against demoting the last remaining admin. Neo4j errors encountered while computing platform stats, per-user document counts, or global node/edge/community counts are logged via Loguru at warning level while the admin API continues to return safe fallback zeros so the portal remains usable when Neo4j is degraded.
+  - Admin user list now uses a single bulk Neo4j query to compute per-user document counts, avoiding N+1 Neo4j calls when paginating over many users.
+  - Global Neo4j document counts used for admin platform statistics treat each `(user_id, document_name)` pair as a distinct document, so two users with identically named files are counted separately and never collapsed into a single global document.
 
 ### Frontend UX Notes
 
@@ -72,7 +63,8 @@ Ship-of-Theseus/
 │   │   │       │   ├── documents.py
 │   │   │       │   ├── entities.py   # Entity extraction (parallel, progress)
 │   │   │       │   ├── graph.py     # Neo4j graph persistence; triggers full GraphRAG pipeline on save + pipeline status
-│   │   │       │   └── community.py # Community detection / knowledge brain endpoints (manual full pipeline trigger)
+│   │   │       │   ├── community.py # Community detection / knowledge brain endpoints (manual full pipeline trigger)
+│   │   │       │   └── admin.py     # Admin-only: stats, users list, system health, toggle admin
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
@@ -85,14 +77,16 @@ Ship-of-Theseus/
 │   │   │   ├── relationship_extraction.json
 │   │   │   └── community_summary.json   # Per-community report (leaf/mid/root)
 │   │   ├── models/              # ORM models
-│   │   │   └── user.py          # User model (PostgreSQL)
+│   │   │   └── user.py          # User model (PostgreSQL; is_admin for admin portal)
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   ├── auth.py
 │   │   │   ├── entities.py
 │   │   │   ├── relationships.py
-│   │   │   └── community.py     # UserBrain, CommunityInfo, HierarchicalCommunity, CommunityLevel
+│   │   │   ├── community.py     # UserBrain, CommunityInfo, HierarchicalCommunity, CommunityLevel
+│   │   │   └── admin.py         # PlatformStats, UserAdminView, SystemHealth, ServiceHealth
 │   │   ├── services/            # Business logic
 │   │   │   ├── user_service.py
+│   │   │   ├── admin_service.py # Platform stats, user list with doc counts, system health
 │   │   │   ├── entity_extraction_service.py
 │   │   │   ├── relationship_extraction_service.py
 │   │   │   ├── neo4j_service.py   # Graph persistence, vector indexes, community nodes, entity embeddings
@@ -104,7 +98,7 @@ Ship-of-Theseus/
 │   └── Dockerfile
 ├── frontend-next/               # Next.js 14 frontend (primary UI)
 │   ├── src/
-│   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx
+│   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx, admin/page.tsx
 │   │   ├── components/          # auth/, upload/, brain/, documents/, NodeConstellation (animated canvas)
 │   │   ├── hooks/               # useAuth, useUpload, useBrain (upload hook drives extraction + preview and then, on Add to Brain, saves + runs the background brain pipeline)
 │   │   └── lib/                 # api.ts (backend client), utils
@@ -188,9 +182,16 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 - `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used. **When using Docker Compose, this is overridden to `redis://redis:6379/0`** so the backend reaches the Redis service.
 - `OPENAI_API_KEY` - Required for entity extraction; if unset, extraction endpoints return 503.
 - `ENTITY_EXTRACTION_MODEL` - LLM model for extraction (default: `gpt-4o-mini`)
-- `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel (default: `5`)
-- `RELATIONSHIP_EXTRACTION_BATCH_SIZE` - Chunks processed in parallel for relationship extraction (default: `5`)
+- `DOCUMENT_CHUNK_SIZE` - Document chunk size (default: `800`)
+- `DOCUMENT_CHUNK_OVERLAP` - Document chunk overlap (default: `150`)
+- `ENTITY_EXTRACTION_BATCH_SIZE` - Chunks processed per batch (default: `10`)
+- `ENTITY_EXTRACTION_CONCURRENCY` - Max concurrent entity LLM calls (default: `20`)
+- `RELATIONSHIP_EXTRACTION_BATCH_SIZE` - Chunks processed per batch for relationship extraction (default: `10`)
+- `RELATIONSHIP_EXTRACTION_CONCURRENCY` - Max concurrent relationship LLM calls (default: `20`)
 - `AUTO_EXTRACT_RELATIONSHIPS` - Auto-trigger relationship extraction after entity extraction (default: `true`)
+- `LLM_RETRY_MAX_ATTEMPTS` - Retries for transient LLM failures (default: `3`)
+- `LLM_RETRY_BASE_DELAY_MS` - Base backoff delay in ms (default: `500`)
+- `LLM_RETRY_MAX_DELAY_MS` - Max backoff delay in ms (default: `5000`)
 - **Neo4j** (optional; graph persistence disabled if unavailable):
   - `NEO4J_URI` - Bolt URL. **When using Docker Compose, this is overridden to `bolt://neo4j:7687`**; use `bolt://localhost:7687` for local dev.
   - `NEO4J_USER` - Neo4j username (set in `.env`; no default in compose)
@@ -199,6 +200,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 - **GraphRAG (community summarization and embedding):**
   - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`). Neo4j vector index dimensions are derived from this model at runtime so index configuration always matches the active embedding model.
   - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)
+  - `COMMUNITY_SUMMARIZATION_CONCURRENCY` - Max concurrent community-summary LLM calls per hierarchy level (default: `50`). Tune down if you hit rate limits; tune up for faster summarization.
 
 ## 🏃 Running Locally (Development)
 
@@ -243,13 +245,13 @@ pytest --cov=app --cov-report=html
 - `GET /auth/verify` - Verify token validity (requires auth)
 
 ### Document Management Endpoints
-- `POST /documents/upload` - Upload PDF and extract text (requires auth, max 10MB); stored in Redis
-- `GET /documents/current` - Get currently stored document (requires auth)
-- `DELETE /documents/current` - Clear stored document (requires auth)
+- `POST /documents/upload` - Upload PDF and extract text (requires auth, max 10MB); stored in Redis under the authenticated user's stable UUID (`str(current_user.id)`)
+- `GET /documents/current` - Get currently stored document for the authenticated user (keyed by stable UUID)
+- `DELETE /documents/current` - Clear stored document for the authenticated user (keyed by stable UUID)
 
 ### Entity Extraction Endpoints (parallel, progress via Redis)
-- `POST /entities/extract` - Start entity extraction on current document; returns `job_id` (requires auth). When complete, relationship extraction is auto-started with job_id `{job_id}_rel`.
-- `GET /entities/extract/status/{job_id}` - Get extraction progress: status, `completed_chunks`/`total_chunks` (requires auth)
+- `POST /entities/extract` - Start entity extraction on current document; returns `job_id` (requires auth). Jobs and per-chunk caches are scoped by the user's stable UUID (`str(current_user.id)`). When complete, relationship extraction is auto-started with job_id `{job_id}_rel`.
+- `GET /entities/extract/status/{job_id}` - Get extraction progress: status, `completed_chunks`/`total_chunks`, and any `failed_chunks`/`warnings` recorded during extraction (requires auth). The `completed_successfully` flag is `false` when one or more chunks failed even if the overall job status is `completed`. Progress and final status snapshots are written to Redis on a **best-effort** basis: failures in `cache_set` are logged via Loguru but never abort the extraction job.
 - `GET /entities/extract/result/{job_id}` - Get extraction result when completed (requires auth; 202 if still running)
 
 ### Relationship Extraction Endpoints (graph-ready: nodes + edges)
@@ -259,16 +261,34 @@ pytest --cov=app --cov-report=html
 
 ### Graph Persistence (Neo4j) Endpoints
 - `POST /graph/save/{job_id}` - Save extracted graph to Neo4j and trigger the **full GraphRAG pipeline** in the background (community detection → summarization → embedding). Returns `{ ok, message, document_name, pipeline_job_id }` (uses entity job_id; requires auth).
-- `GET /graph/list` - List documents in Neo4j with node/edge counts (requires auth)
-- `GET /graph/{document_name}` - Get graph from Neo4j by document name (requires auth)
-- `DELETE /graph/{document_name}` - Delete document graph from Neo4j (requires auth)
+- `GET /graph/list` - List **current user's** documents in Neo4j with node/edge counts (requires auth)
+- `GET /graph/{document_name}` - Get **current user's** graph from Neo4j by document name (requires auth; returns 404 if not found/owned)
+- `DELETE /graph/{document_name}` - Delete **current user's** document graph from Neo4j (requires auth; returns 404 if not found/owned)
 - `GET /graph/health` - Neo4j connectivity check (requires auth)
-- `GET /graph/pipeline/status/{pipeline_job_id}` - Get status of a long‑running graph pipeline job; returns the current `step` (`community_detection`, `summarizing`, `embedding`), `step_index`, `total_steps`, `status` (`running|done|failed`), and `message` (requires auth)
+- `GET /graph/pipeline/status/{pipeline_job_id}` - Get status of a long‑running graph pipeline job; returns the current `step` (`community_detection`, `summarizing`, `embedding`), `step_index`, `total_steps`, `status` (`running|done|failed`), and `message`. During `summarizing`, the response also includes `community_progress` with `{ completed, total }` so the UI can show per-community progress (requires auth)
 
 ### Community Detection / Knowledge Brain Endpoints (GraphRAG)
 - `GET /community/brain` - Get current user's knowledge brain (includes `communities_by_level` with summaries when full pipeline has run; cache: Redis → Neo4j Brain node → recompute fallback; requires auth). The dashboard **Refresh** button uses this read-only endpoint to update what is shown to the user.
 - `POST /community/detect` - Run full GraphRAG pipeline: hierarchical detection (Leaf → Mid → Root), LLM summarization per community, entity and summary embedding (text-embedding-3-small), persist to Neo4j (assignments, community nodes, vector indexes); returns enriched brain (requires auth). This endpoint is available for manual or programmatic re-computation but is no longer called from the main dashboard UI.
 - `DELETE /community/brain` - Permanently delete the user's brain, community nodes, and all document graphs from Neo4j; clear Redis cache (requires auth)
+
+### Admin Endpoints (require admin user; 403 if not admin)
+- `GET {API_V1_PREFIX}/admin/stats` - Platform statistics: total/active/new (7d) users, total documents, entities, relationships, communities, avg docs per user
+- `GET {API_V1_PREFIX}/admin/users` - Paginated user list with document counts (query: `page`, `limit`; default limit 20, max 100)
+- `GET {API_V1_PREFIX}/admin/system` - System health: PostgreSQL, Neo4j, Redis status plus global Neo4j node/edge/community counts
+- `PATCH {API_V1_PREFIX}/admin/users/{user_id}/toggle-admin` - Promote or demote a user's admin status; prevents demoting the last remaining admin
+
+**Note:** The admin router is mounted at `f"{settings.API_V1_PREFIX}/admin"` in the backend (see `backend/app/main.py`), so be sure to include the API version prefix in all admin requests to avoid 404s.
+
+**Note:** Users have an `is_admin` flag (default `false`). Set it in the database for the first admin; thereafter use the Admin portal to promote/demote others.
+
+Example (Docker Compose + PostgreSQL):
+
+```bash
+docker compose exec postgres psql -U postgres -d shipoftheseus -c "UPDATE users SET is_admin = true WHERE username = 'admin-dev';"
+```
+
+**Implementation detail:** Neo4j nodes are scoped by `user_id` using the user's **PostgreSQL UUID** (not email/username). If you have older Neo4j data created before this change, per-user stats may show 0 until you re-save/reprocess documents or migrate existing Neo4j nodes to the UUID-based `user_id`.
 
 ## 🐳 Docker, Redis, PostgreSQL, and Neo4j
 

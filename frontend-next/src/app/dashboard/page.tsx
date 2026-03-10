@@ -150,6 +150,14 @@ export default function DashboardPage() {
             <span>Ship of Theseus</span>
           </Link>
           <div className="flex items-center gap-3">
+            {user?.is_admin && (
+              <Link
+                href="/admin"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                Admin
+              </Link>
+            )}
             <div className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
                 {initials}

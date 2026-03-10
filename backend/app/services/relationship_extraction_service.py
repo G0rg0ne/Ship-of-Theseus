@@ -5,6 +5,7 @@ Supports parallel chunk processing with progress tracking via Redis.
 Outputs graph-ready format (nodes + edges).
 """
 import asyncio
+import random
 import re
 from datetime import datetime
 from typing import Dict, List, Set, Tuple
@@ -72,6 +73,10 @@ class RelationshipExtractionService:
             lines.append(f"- {term.name} (KeyTerm)")
         return "\n".join(lines) if lines else "(No entities in this chunk)"
 
+    def build_entity_list(self, chunk_entities: ExtractedEntities) -> str:
+        """Public wrapper for building the entity list string used in the prompt."""
+        return self._build_entity_list(chunk_entities)
+
     @staticmethod
     def _validate_relationships(
         relationships: List[Relationship], valid_entities: Set[str]
@@ -111,9 +116,48 @@ class RelationshipExtractionService:
     ) -> ExtractedRelationships:
         """Extract relationships from a single chunk (async for parallel use)."""
         entity_list = self._build_entity_list(chunk_entities)
-        result = await self.chain.ainvoke({"entity_list": entity_list, "text": text})
+        result = await self._ainvoke_with_retry(
+            {"entity_list": entity_list, "text": text}, chunk_id=chunk_id
+        )
         result.chunk_id = chunk_id
         return result
+
+    async def extract_relationship_list_async(
+        self,
+        text: str,
+        chunk_entities: ExtractedEntities,
+        chunk_id: int,
+    ) -> List[Relationship]:
+        """Extract relationships for a chunk and return Relationship list."""
+        res = await self.extract_relationships_async(text, chunk_entities, chunk_id)
+        return res.relationships or []
+
+    async def _ainvoke_with_retry(self, payload: dict, *, chunk_id: int) -> ExtractedRelationships:
+        attempts = max(1, int(getattr(settings, "LLM_RETRY_MAX_ATTEMPTS", 3) or 3))
+        base_ms = int(getattr(settings, "LLM_RETRY_BASE_DELAY_MS", 500) or 500)
+        max_ms = int(getattr(settings, "LLM_RETRY_MAX_DELAY_MS", 5_000) or 5_000)
+
+        last_exc: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self.chain.ainvoke(payload)
+            except Exception as exc:
+                last_exc = exc if isinstance(exc, Exception) else Exception(str(exc))
+                if attempt >= attempts:
+                    break
+                delay_ms = min(max_ms, base_ms * (2 ** (attempt - 1)))
+                jitter = random.uniform(0.75, 1.25)
+                await asyncio.sleep((delay_ms * jitter) / 1000.0)
+                logger.warning(
+                    "Relationship extraction transient failure; retrying",
+                    chunk_id=chunk_id,
+                    attempt=attempt,
+                    max_attempts=attempts,
+                    error=str(last_exc),
+                )
+
+        assert last_exc is not None
+        raise last_exc
 
     @staticmethod
     def _build_graph(
@@ -231,6 +275,15 @@ class RelationshipExtractionService:
             relationship_count=len(edges),
         )
 
+    def build_graph_from_entities_and_relationships(
+        self,
+        document_entities: DocumentEntities,
+        all_relationships: List[Relationship],
+        filename: str,
+    ) -> DocumentGraph:
+        """Public wrapper for building a graph from extracted entities and relationships."""
+        return self._build_graph(document_entities, all_relationships, filename)
+
     async def extract_from_chunks_parallel(
         self,
         chunks: List[str],
@@ -249,6 +302,8 @@ class RelationshipExtractionService:
         batch_size = getattr(
             settings, "RELATIONSHIP_EXTRACTION_BATCH_SIZE", 5
         ) or 5
+        concurrency = getattr(settings, "RELATIONSHIP_EXTRACTION_CONCURRENCY", batch_size) or batch_size
+        semaphore = asyncio.Semaphore(max(1, int(concurrency)))
 
         job_payload = {
             "status": "running",
@@ -300,8 +355,8 @@ class RelationshipExtractionService:
                         )
                     )
                     tasks.append(
-                        self.extract_relationships_async(
-                            chunk_text, chunk_ent, chunk_idx
+                        self._extract_relationships_async_limited(
+                            semaphore, chunk_text, chunk_ent, chunk_idx
                         )
                     )
                 batch_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -348,3 +403,13 @@ class RelationshipExtractionService:
             job_payload["error"] = str(e)
             job_payload["result"] = None
             await cache_set(key, job_payload, ttl_seconds=EXTRACTION_JOB_TTL)
+
+    async def _extract_relationships_async_limited(
+        self,
+        semaphore: asyncio.Semaphore,
+        text: str,
+        chunk_entities: ExtractedEntities,
+        chunk_id: int,
+    ) -> ExtractedRelationships:
+        async with semaphore:
+            return await self.extract_relationships_async(text, chunk_entities, chunk_id)

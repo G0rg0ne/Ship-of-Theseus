@@ -18,6 +18,7 @@ from app.core.cache import (
 )
 from app.core.logger import logger
 from app.models.user import User
+from app.schemas.community import CommunityLevel
 from app.schemas.relationships import DocumentGraph
 from app.services.brain_pipeline_service import NoUserGraphError, run_full_brain_pipeline_for_user
 from app.services.neo4j_service import Neo4jService
@@ -87,6 +88,7 @@ async def _set_pipeline_status(
     total_steps: int,
     message: str,
     user_id: str,
+    community_progress: Optional[Dict[str, int]] = None,
     error: Optional[str] = None,
 ) -> None:
     """Persist a snapshot of the long-running pipeline status in cache."""
@@ -99,19 +101,27 @@ async def _set_pipeline_status(
         "message": message,
         "user_id": user_id,
     }
+    if community_progress is not None:
+        payload["community_progress"] = community_progress
     if error is not None:
         payload["error"] = error
     await cache_set(cache_key_pipeline_job(pipeline_job_id), payload, ttl_seconds=PIPELINE_JOB_TTL)
 
 
-async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: Neo4jService) -> None:
-    """Run the full GraphRAG pipeline for user_id in the background.
+async def _background_full_pipeline(
+    pipeline_job_id: str,
+    *,
+    neo4j_user_id: str,
+    cache_user_id: str,
+    neo4j: Neo4jService,
+) -> None:
+    """Run the full GraphRAG pipeline for a user in the background.
 
     Called as a FastAPI BackgroundTask after saving a document graph.
     """
     logger.info(
         "Background full graph pipeline started",
-        user_id=user_id,
+        user_id=neo4j_user_id,
         pipeline_job_id=pipeline_job_id,
     )
     total_steps = 3  # community_detection, summarizing, embedding
@@ -124,11 +134,41 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             step_index=step_index,
             total_steps=total,
             message=message,
-            user_id=user_id,
+            user_id=cache_user_id,
         )
 
     try:
-        await run_full_brain_pipeline_for_user(user_id, neo4j, on_step=_on_step)
+        last_sent_completed: int = -1
+        debounce_every: int = 5
+        last_level: Optional[CommunityLevel] = None
+
+        async def _on_summarization_progress(
+            level: CommunityLevel, completed: int, total: int
+        ) -> None:
+            nonlocal last_sent_completed, last_level
+            if last_level is not None and level != last_level:
+                last_sent_completed = -1
+            last_level = level
+            if completed != total and (completed - last_sent_completed) < debounce_every:
+                return
+            last_sent_completed = completed
+            await _set_pipeline_status(
+                pipeline_job_id,
+                status="running",
+                step="summarizing",
+                step_index=2,
+                total_steps=total_steps,
+                message=f"Summarizing {level.value} communities… {completed}/{total}",
+                user_id=cache_user_id,
+                community_progress={"completed": completed, "total": total},
+            )
+
+        await run_full_brain_pipeline_for_user(
+            neo4j_user_id,
+            neo4j,
+            on_step=_on_step,
+            on_summarization_progress=_on_summarization_progress,
+        )
 
         await _set_pipeline_status(
             pipeline_job_id,
@@ -137,17 +177,17 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             step_index=total_steps,
             total_steps=total_steps,
             message="Knowledge brain updated successfully.",
-            user_id=user_id,
+            user_id=cache_user_id,
         )
         logger.success(
             "Community brain saved, enriched and cached",
-            user_id=user_id,
+            user_id=neo4j_user_id,
             pipeline_job_id=pipeline_job_id,
         )
     except NoUserGraphError:
         logger.info(
             "No nodes found for community detection",
-            user_id=user_id,
+            user_id=neo4j_user_id,
             pipeline_job_id=pipeline_job_id,
         )
         await _set_pipeline_status(
@@ -157,7 +197,7 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             step_index=1,
             total_steps=total_steps,
             message="No nodes found in Neo4j. Add documents to the knowledge base first.",
-            user_id=user_id,
+            user_id=cache_user_id,
             error="no_nodes",
         )
     except Exception as exc:
@@ -168,12 +208,12 @@ async def _background_full_pipeline(pipeline_job_id: str, user_id: str, neo4j: N
             step_index=0,
             total_steps=total_steps,
             message="Graph pipeline failed.",
-            user_id=user_id,
+            user_id=cache_user_id,
             error=str(exc),
         )
         logger.exception(
             "Full graph pipeline background task failed",
-            user_id=user_id,
+            user_id=neo4j_user_id,
             pipeline_job_id=pipeline_job_id,
             error=str(exc),
         )
@@ -192,21 +232,23 @@ async def save_graph_to_neo4j(
     """
     from uuid import uuid4
 
-    user_id = current_user.email or current_user.username
-    document_graph = await _get_graph_from_cache(job_id, user_id)
+    cache_user_id = current_user.email or current_user.username
+    neo4j_user_id = str(current_user.id)
+    document_graph = await _get_graph_from_cache(job_id, cache_user_id)
     if not neo4j:
         raise HTTPException(
             status_code=503,
             detail="Neo4j is not configured or unavailable",
         )
     try:
-        neo4j.save_document_graph(document_graph, user_id=user_id)
+        neo4j.save_document_graph(document_graph, user_id=neo4j_user_id)
         pipeline_job_id = str(uuid4())
         background_tasks.add_task(
             _background_full_pipeline,
             pipeline_job_id,
-            user_id,
-            neo4j,
+            neo4j_user_id=neo4j_user_id,
+            cache_user_id=cache_user_id,
+            neo4j=neo4j,
         )
         return {
             "ok": True,
@@ -228,7 +270,8 @@ async def list_neo4j_documents(
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
     try:
-        items = neo4j.list_documents()
+        neo4j_user_id = str(current_user.id)
+        items = neo4j.list_documents(user_id=neo4j_user_id)
         return {"documents": items}
     except Exception as e:
         from app.core.logger import logger
@@ -245,7 +288,8 @@ async def get_graph_from_neo4j(
     """Retrieve a document graph from Neo4j by document name."""
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
-    graph = neo4j.get_document_graph(document_name)
+    neo4j_user_id = str(current_user.id)
+    graph = neo4j.get_document_graph(document_name, user_id=neo4j_user_id)
     if graph is None:
         raise HTTPException(status_code=404, detail=f"No graph found for document: {document_name}")
     return graph
@@ -261,7 +305,8 @@ async def delete_graph_from_neo4j(
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
     try:
-        neo4j.delete_document_graph(document_name)
+        neo4j_user_id = str(current_user.id)
+        neo4j.delete_document_graph(document_name, user_id=neo4j_user_id)
         return {"ok": True, "message": f"Graph for '{document_name}' deleted"}
     except Exception as e:
         from app.core.logger import logger

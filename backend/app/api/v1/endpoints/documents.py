@@ -12,6 +12,7 @@ from io import BytesIO
 
 from app.api.v1.deps import get_current_user
 from app.models.user import User
+from app.core.config import settings
 from app.core.logger import logger
 from app.core.cache import (
     cache_get,
@@ -47,9 +48,26 @@ def _extract_text_from_pdf(file_bytes: bytes) -> str:
 
 def _chunk_text(text: str) -> List[str]:
     """Chunk text into smaller chunks."""
+    raw_chunk_size = getattr(settings, "DOCUMENT_CHUNK_SIZE", 800)
+    raw_chunk_overlap = getattr(settings, "DOCUMENT_CHUNK_OVERLAP", 150)
+
+    try:
+        chunk_size = int(raw_chunk_size)
+    except (TypeError, ValueError):
+        chunk_size = 800
+
+    try:
+        chunk_overlap = int(raw_chunk_overlap)
+    except (TypeError, ValueError):
+        chunk_overlap = 150
+
+    # Enforce sane bounds: chunk_size >= 1, 0 <= chunk_overlap <= chunk_size - 1
+    chunk_size = max(1, chunk_size)
+    chunk_overlap = max(0, min(chunk_overlap, chunk_size - 1))
+
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=150,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         length_function=len,
         is_separator_regex=False,
     )
@@ -63,7 +81,7 @@ async def upload_document(
     """
     Upload a PDF document, extract its text, and store it for the current user.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     logger.info(f"Document upload request received", user=user_id, filename=file.filename)
     
     if file.content_type and file.content_type != ALLOWED_CONTENT_TYPE:
@@ -134,7 +152,7 @@ async def get_current_document(
     """
     Get the currently stored document for the authenticated user.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     logger.info("Document retrieval request", user=user_id)
 
     doc = await cache_get(cache_key_document(user_id))
@@ -158,7 +176,7 @@ async def clear_current_document(
     """
     Remove the stored document for the authenticated user.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     logger.info("Document deletion request", user=user_id)
 
     key = cache_key_document(user_id)

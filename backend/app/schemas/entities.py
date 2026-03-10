@@ -72,6 +72,18 @@ class ExtractionJobStatus(BaseModel):
     filename: Optional[str] = None
     created_at: Optional[str] = None
     error: Optional[str] = None
+    failed_chunks: List[int] = Field(
+        default_factory=list,
+        description="Indices of chunks that failed entity extraction",
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Non-fatal issues encountered during extraction",
+    )
+    completed_successfully: bool = Field(
+        default=False,
+        description="True only when job completed and no chunk-level failures occurred",
+    )
 
 
 class ExtractionJobStarted(BaseModel):

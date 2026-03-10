@@ -31,6 +31,7 @@ export interface UserResponse {
   username: string;
   email: string;
   is_active: boolean;
+  is_admin?: boolean;
   created_at: string;
 }
 
@@ -178,4 +179,72 @@ export async function deleteUserBrain(token: string): Promise<void> {
     method: "DELETE", headers: getHeaders(token),
   });
   await handleResponse(res);
+}
+
+// ---------------------------------------------------------------------------
+// Admin API (requires admin user)
+// ---------------------------------------------------------------------------
+
+export interface PlatformStats {
+  total_users: number;
+  active_users: number;
+  new_users_7d: number;
+  total_documents: number;
+  total_entities: number;
+  total_relationships: number;
+  total_communities: number;
+  avg_docs_per_user: number;
+}
+
+export interface UserAdminView {
+  id: string;
+  username: string;
+  email: string;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string;
+  document_count: number;
+}
+
+export interface ServiceHealth {
+  name: string;
+  status: string;
+  detail?: string;
+}
+
+export interface SystemHealth {
+  services: ServiceHealth[];
+  neo4j_node_count: number;
+  neo4j_edge_count: number;
+  neo4j_community_count: number;
+}
+
+export async function getAdminStats(token: string): Promise<PlatformStats> {
+  const res = await fetch(getBaseUrl() + "/api/admin/stats", { headers: getHeaders(token) });
+  return handleResponse<PlatformStats>(res);
+}
+
+export async function getAdminUsers(
+  token: string,
+  page: number = 1,
+  limit: number = 20
+): Promise<UserAdminView[]> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  const res = await fetch(getBaseUrl() + "/api/admin/users?" + params, {
+    headers: getHeaders(token),
+  });
+  return handleResponse<UserAdminView[]>(res);
+}
+
+export async function getSystemHealth(token: string): Promise<SystemHealth> {
+  const res = await fetch(getBaseUrl() + "/api/admin/system", { headers: getHeaders(token) });
+  return handleResponse<SystemHealth>(res);
+}
+
+export async function toggleUserAdmin(token: string, userId: string): Promise<UserAdminView> {
+  const res = await fetch(getBaseUrl() + "/api/admin/users/" + encodeURIComponent(userId) + "/toggle-admin", {
+    method: "PATCH",
+    headers: getHeaders(token),
+  });
+  return handleResponse<UserAdminView>(res);
 }

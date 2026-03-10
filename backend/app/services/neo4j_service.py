@@ -157,21 +157,34 @@ class Neo4jService:
         )
         return True
 
-    def get_document_graph(self, document_name: str) -> Optional[DocumentGraph]:
+    def get_document_graph(
+        self, document_name: str, *, user_id: Optional[str] = None
+    ) -> Optional[DocumentGraph]:
         """
         Load a document graph from Neo4j by document_name.
         Returns None if no nodes exist for that document.
         """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
-            result = session.run(
-                """
-                MATCH (n {document_name: $doc_name})
-                OPTIONAL MATCH (n)-[r:RELATES]->(m)
-                RETURN n, r, m
-                """,
-                doc_name=document_name,
-            )
+            if user_id:
+                result = session.run(
+                    """
+                    MATCH (n {document_name: $doc_name, user_id: $user_id})
+                    OPTIONAL MATCH (n)-[r:RELATES {document_name: $doc_name}]->(m {document_name: $doc_name, user_id: $user_id})
+                    RETURN n, r, m
+                    """,
+                    doc_name=document_name,
+                    user_id=user_id,
+                )
+            else:
+                result = session.run(
+                    """
+                    MATCH (n {document_name: $doc_name})
+                    OPTIONAL MATCH (n)-[r:RELATES]->(m)
+                    RETURN n, r, m
+                    """,
+                    doc_name=document_name,
+                )
             nodes_by_id: Dict[str, GraphNode] = {}
             edges_seen: set = set()
             edges_list: List[GraphEdge] = []
@@ -232,22 +245,40 @@ class Neo4jService:
                 relationship_count=len(edges_list),
             )
 
-    def list_documents(self) -> List[Dict[str, Any]]:
-        """Return list of document metadata (document_name, node_count, edge_count)."""
+    def list_documents(self, *, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return list of document metadata (document_name, node_count, edge_count).
+
+        When user_id is provided, results are scoped to that user's documents.
+        """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
-            result = session.run(
-                """
-                MATCH (n)
-                WHERE n.document_name IS NOT NULL
-                WITH DISTINCT n.document_name AS doc_name
-                OPTIONAL MATCH (a {document_name: doc_name})
-                WITH doc_name, count(a) AS node_count
-                OPTIONAL MATCH (x {document_name: doc_name})-[r:RELATES]->()
-                WITH doc_name, node_count, count(r) AS edge_count
-                RETURN doc_name, node_count, edge_count
-                """
-            )
+            if user_id:
+                result = session.run(
+                    """
+                    MATCH (n)
+                    WHERE n.user_id = $user_id AND n.document_name IS NOT NULL
+                    WITH DISTINCT n.document_name AS doc_name
+                    OPTIONAL MATCH (a {document_name: doc_name, user_id: $user_id})
+                    WITH doc_name, count(a) AS node_count
+                    OPTIONAL MATCH (x {document_name: doc_name, user_id: $user_id})-[r:RELATES {document_name: doc_name}]->()
+                    WITH doc_name, node_count, count(r) AS edge_count
+                    RETURN doc_name, node_count, edge_count
+                    """,
+                    user_id=user_id,
+                )
+            else:
+                result = session.run(
+                    """
+                    MATCH (n)
+                    WHERE n.document_name IS NOT NULL
+                    WITH DISTINCT n.document_name AS doc_name
+                    OPTIONAL MATCH (a {document_name: doc_name})
+                    WITH doc_name, count(a) AS node_count
+                    OPTIONAL MATCH (x {document_name: doc_name})-[r:RELATES]->()
+                    WITH doc_name, node_count, count(r) AS edge_count
+                    RETURN doc_name, node_count, edge_count
+                    """
+                )
             out: List[Dict[str, Any]] = []
             for record in result:
                 out.append({
@@ -257,15 +288,67 @@ class Neo4jService:
                 })
             return out
 
-    def delete_document_graph(self, document_name: str) -> bool:
-        """Delete all nodes and relationships for the given document. Returns True on success."""
+    def get_global_counts(
+        self,
+    ) -> Tuple[int, int, int, int]:
+        """
+        Return (entity_count, edge_count, community_count, document_count) for admin stats.
+        """
+        driver = self._get_driver()
+        entity_count = edge_count = community_count = document_count = 0
+        with driver.session(database=self._database) as session:
+            r = session.run("MATCH (n:Entity) RETURN count(n) AS c")
+            rec = r.single()
+            if rec:
+                entity_count = int(rec["c"]) if rec["c"] is not None else 0
+            r = session.run("MATCH ()-[r:RELATES]->() RETURN count(r) AS c")
+            rec = r.single()
+            if rec:
+                edge_count = int(rec["c"]) if rec["c"] is not None else 0
+            r = session.run("MATCH (c:Community) RETURN count(c) AS c")
+            rec = r.single()
+            if rec:
+                community_count = int(rec["c"]) if rec["c"] is not None else 0
+            # Count distinct (user_id, document_name) pairs so that documents
+            # with the same name belonging to different users are not collapsed.
+            r = session.run(
+                """
+                MATCH (n)
+                WHERE n.user_id IS NOT NULL AND n.document_name IS NOT NULL
+                RETURN count(DISTINCT [n.user_id, n.document_name]) AS c
+                """
+            )
+            rec = r.single()
+            if rec:
+                document_count = int(rec["c"]) if rec["c"] is not None else 0
+        return entity_count, edge_count, community_count, document_count
+
+    def delete_document_graph(
+        self, document_name: str, *, user_id: Optional[str] = None
+    ) -> bool:
+        """Delete all nodes and relationships for the given document.
+
+        When user_id is provided, deletion is scoped to that user's document.
+        """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
-            session.run(
-                "MATCH (n {document_name: $doc_name}) DETACH DELETE n",
-                doc_name=document_name,
-            )
-            logger.info("Document graph deleted from Neo4j", document_name=document_name)
+            if user_id:
+                session.run(
+                    "MATCH (n {document_name: $doc_name, user_id: $user_id}) DETACH DELETE n",
+                    doc_name=document_name,
+                    user_id=user_id,
+                )
+                logger.info(
+                    "User-scoped document graph deleted from Neo4j",
+                    document_name=document_name,
+                    user_id=user_id,
+                )
+            else:
+                session.run(
+                    "MATCH (n {document_name: $doc_name}) DETACH DELETE n",
+                    doc_name=document_name,
+                )
+                logger.info("Document graph deleted from Neo4j", document_name=document_name)
         return True
 
     # ------------------------------------------------------------------
@@ -325,13 +408,56 @@ class Neo4jService:
         with driver.session(database=self._database) as session:
             result = session.run(
                 """
-                MATCH (n) WHERE n.user_id = $user_id AND n.document_name IS NOT NULL
+                MATCH (n)
+                WHERE n.user_id = $user_id AND n.document_name IS NOT NULL
                 RETURN count(DISTINCT n.document_name) AS cnt
                 """,
                 user_id=user_id,
             )
             record = result.single()
             return int(record["cnt"]) if record else 0
+
+    def get_document_counts_for_user_ids(
+        self,
+        user_ids: List[str],
+    ) -> Dict[str, int]:
+        """
+        Return a mapping of user_id -> distinct document count for the given users.
+
+        This is the bulk equivalent of get_user_document_count and is intended for
+        admin views to avoid N+1 Neo4j queries when listing many users.
+        """
+        if not user_ids:
+            return {}
+
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                MATCH (n)
+                WHERE n.user_id IN $user_ids AND n.document_name IS NOT NULL
+                RETURN n.user_id AS user_id, count(DISTINCT n.document_name) AS cnt
+                """,
+                user_ids=user_ids,
+            )
+
+            counts: Dict[str, int] = {}
+            for record in result:
+                uid = record.get("user_id")
+                if uid is None:
+                    continue
+                cnt = record.get("cnt")
+                try:
+                    counts[str(uid)] = int(cnt) if cnt is not None else 0
+                except (TypeError, ValueError):
+                    continue
+
+        logger.info(
+            "Loaded per-user document counts from Neo4j",
+            user_count=len(user_ids),
+            result_count=len(counts),
+        )
+        return counts
 
     def save_community_assignments(
         self,
@@ -346,18 +472,26 @@ class Neo4jService:
         """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
+            rows: List[Dict[str, Any]] = []
             for community in communities:
-                cid = community["community_id"]
-                for node_id in community.get("node_ids", []):
-                    session.run(
-                        """
-                        MATCH (n {user_id: $user_id, id: $node_id})
-                        SET n.community_id = $community_id
-                        """,
-                        user_id=user_id,
-                        node_id=node_id,
-                        community_id=cid,
-                    )
+                cid = community.get("community_id")
+                if not cid:
+                    continue
+                for node_id in community.get("node_ids", []) or []:
+                    if not node_id:
+                        continue
+                    rows.append({"node_id": node_id, "community_id": cid})
+
+            if rows:
+                session.run(
+                    """
+                    UNWIND $rows AS row
+                    MATCH (n {user_id: $user_id, id: row.node_id})
+                    SET n.community_id = row.community_id
+                    """,
+                    user_id=user_id,
+                    rows=rows,
+                )
         logger.success(
             "Community assignments saved to Neo4j",
             user_id=user_id,
@@ -498,8 +632,11 @@ class Neo4jService:
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             self.ensure_vector_indexes(session)
+            rows: List[Dict[str, Any]] = []
             for c in communities:
                 cid = c.get("community_id") or ""
+                if not cid:
+                    continue
                 level = c.get("level") or "leaf"
                 parent = c.get("parent_community_id")
                 summary = c.get("summary") or ""
@@ -524,14 +661,16 @@ class Neo4jService:
                     props["summary_fingerprint"] = summary_fingerprint
                 if embedding is not None:
                     props["embedding"] = embedding
+                rows.append({"community_id": cid, "derived_user_id": user_id, "props": props})
+
+            if rows:
                 session.run(
                     """
-                    MERGE (c:Community {community_id: $community_id, derived_user_id: $derived_user_id})
-                    SET c += $props
+                    UNWIND $rows AS row
+                    MERGE (c:Community {community_id: row.community_id, derived_user_id: row.derived_user_id})
+                    SET c += row.props
                     """,
-                    community_id=cid,
-                    derived_user_id=user_id,
-                    props=props,
+                    rows=rows,
                 )
         logger.success(
             "Community nodes saved to Neo4j",
@@ -557,39 +696,46 @@ class Neo4jService:
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             self.ensure_vector_indexes(session)
+            rows: List[Dict[str, Any]] = []
             for node_id, embedding in embeddings_map.items():
+                if not node_id:
+                    continue
+                row: Dict[str, Any] = {"node_id": node_id, "embedding": embedding}
                 if fingerprint_map is not None:
-                    fingerprint = fingerprint_map.get(node_id)
-                    session.run(
-                        """
-                        MATCH (n)
-                        WHERE n.user_id = $user_id
-                          AND n.document_name = $document_name
-                          AND n.id = $node_id
-                        SET n:Entity,
-                            n.embedding = $embedding,
-                            n.embedding_fingerprint = $fingerprint
-                        """,
-                        user_id=user_id,
-                        document_name=document_name,
-                        node_id=node_id,
-                        embedding=embedding,
-                        fingerprint=fingerprint,
-                    )
-                else:
-                    session.run(
-                        """
-                        MATCH (n)
-                        WHERE n.user_id = $user_id
-                          AND n.document_name = $document_name
-                          AND n.id = $node_id
-                        SET n:Entity, n.embedding = $embedding
-                        """,
-                        user_id=user_id,
-                        document_name=document_name,
-                        node_id=node_id,
-                        embedding=embedding,
-                    )
+                    row["fingerprint"] = fingerprint_map.get(node_id)
+                rows.append(row)
+
+            if fingerprint_map is not None:
+                session.run(
+                    """
+                    UNWIND $rows AS row
+                    MATCH (n)
+                    WHERE n.user_id = $user_id
+                      AND n.document_name = $document_name
+                      AND n.id = row.node_id
+                    SET n:Entity,
+                        n.embedding = row.embedding,
+                        n.embedding_fingerprint = row.fingerprint
+                    """,
+                    user_id=user_id,
+                    document_name=document_name,
+                    rows=rows,
+                )
+            else:
+                session.run(
+                    """
+                    UNWIND $rows AS row
+                    MATCH (n)
+                    WHERE n.user_id = $user_id
+                      AND n.document_name = $document_name
+                      AND n.id = row.node_id
+                    SET n:Entity,
+                        n.embedding = row.embedding
+                    """,
+                    user_id=user_id,
+                    document_name=document_name,
+                    rows=rows,
+                )
         logger.success(
             "Entity embeddings saved to Neo4j",
             user_id=user_id,

@@ -117,6 +117,14 @@ export function ProcessingSteps({
               >
                 {stage.label}
               </span>
+              {isActive &&
+                stage.id === "summarizing" &&
+                effectiveProgress &&
+                effectiveProgress.total > 1 && (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {effectiveProgress.completed}/{effectiveProgress.total}
+                  </span>
+                )}
               {isActive && (
                 <span className="inline-flex h-3 w-3 items-center justify-center">
                   <span className="h-2 w-2 animate-ping rounded-full bg-primary" />

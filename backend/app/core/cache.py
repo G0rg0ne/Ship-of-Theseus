@@ -150,6 +150,19 @@ def cache_key_pipeline_job(pipeline_job_id: str) -> str:
     return f"pipeline:job:{pipeline_job_id}"
 
 
+def cache_key_entities_by_chunk_hash(user_id: str, chunk_hash: str) -> str:
+    """Cache key for extracted entities for a given chunk hash (scoped to user)."""
+    return f"extraction:entities:{user_id}:{chunk_hash}"
+
+
+def cache_key_relationships_by_chunk_hash(
+    user_id: str, chunk_hash: str, entity_list_hash: str
+) -> str:
+    """Cache key for extracted relationships for a chunk+entity_list hash (scoped to user)."""
+    return f"extraction:relationships:{user_id}:{chunk_hash}:{entity_list_hash}"
+
+
 # Default TTLs (seconds)
 DOCUMENT_TTL = 24 * 60 * 60  # 24 hours
 EXTRACTION_JOB_TTL = 60 * 60  # 1 hour
+EXTRACTION_CHUNK_CACHE_TTL = 24 * 60 * 60  # 24 hours
