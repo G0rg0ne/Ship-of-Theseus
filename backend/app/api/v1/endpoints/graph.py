@@ -266,7 +266,8 @@ async def list_neo4j_documents(
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
     try:
-        items = neo4j.list_documents()
+        neo4j_user_id = str(current_user.id)
+        items = neo4j.list_documents(user_id=neo4j_user_id)
         return {"documents": items}
     except Exception as e:
         from app.core.logger import logger
@@ -283,7 +284,8 @@ async def get_graph_from_neo4j(
     """Retrieve a document graph from Neo4j by document name."""
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
-    graph = neo4j.get_document_graph(document_name)
+    neo4j_user_id = str(current_user.id)
+    graph = neo4j.get_document_graph(document_name, user_id=neo4j_user_id)
     if graph is None:
         raise HTTPException(status_code=404, detail=f"No graph found for document: {document_name}")
     return graph
@@ -299,7 +301,8 @@ async def delete_graph_from_neo4j(
     if not neo4j:
         raise HTTPException(status_code=503, detail="Neo4j is not configured or unavailable")
     try:
-        neo4j.delete_document_graph(document_name)
+        neo4j_user_id = str(current_user.id)
+        neo4j.delete_document_graph(document_name, user_id=neo4j_user_id)
         return {"ok": True, "message": f"Graph for '{document_name}' deleted"}
     except Exception as e:
         from app.core.logger import logger

@@ -157,21 +157,34 @@ class Neo4jService:
         )
         return True
 
-    def get_document_graph(self, document_name: str) -> Optional[DocumentGraph]:
+    def get_document_graph(
+        self, document_name: str, *, user_id: Optional[str] = None
+    ) -> Optional[DocumentGraph]:
         """
         Load a document graph from Neo4j by document_name.
         Returns None if no nodes exist for that document.
         """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
-            result = session.run(
-                """
-                MATCH (n {document_name: $doc_name})
-                OPTIONAL MATCH (n)-[r:RELATES]->(m)
-                RETURN n, r, m
-                """,
-                doc_name=document_name,
-            )
+            if user_id:
+                result = session.run(
+                    """
+                    MATCH (n {document_name: $doc_name, user_id: $user_id})
+                    OPTIONAL MATCH (n)-[r:RELATES {document_name: $doc_name}]->(m {document_name: $doc_name, user_id: $user_id})
+                    RETURN n, r, m
+                    """,
+                    doc_name=document_name,
+                    user_id=user_id,
+                )
+            else:
+                result = session.run(
+                    """
+                    MATCH (n {document_name: $doc_name})
+                    OPTIONAL MATCH (n)-[r:RELATES]->(m)
+                    RETURN n, r, m
+                    """,
+                    doc_name=document_name,
+                )
             nodes_by_id: Dict[str, GraphNode] = {}
             edges_seen: set = set()
             edges_list: List[GraphEdge] = []
@@ -232,22 +245,40 @@ class Neo4jService:
                 relationship_count=len(edges_list),
             )
 
-    def list_documents(self) -> List[Dict[str, Any]]:
-        """Return list of document metadata (document_name, node_count, edge_count)."""
+    def list_documents(self, *, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return list of document metadata (document_name, node_count, edge_count).
+
+        When user_id is provided, results are scoped to that user's documents.
+        """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
-            result = session.run(
-                """
-                MATCH (n)
-                WHERE n.document_name IS NOT NULL
-                WITH DISTINCT n.document_name AS doc_name
-                OPTIONAL MATCH (a {document_name: doc_name})
-                WITH doc_name, count(a) AS node_count
-                OPTIONAL MATCH (x {document_name: doc_name})-[r:RELATES]->()
-                WITH doc_name, node_count, count(r) AS edge_count
-                RETURN doc_name, node_count, edge_count
-                """
-            )
+            if user_id:
+                result = session.run(
+                    """
+                    MATCH (n)
+                    WHERE n.user_id = $user_id AND n.document_name IS NOT NULL
+                    WITH DISTINCT n.document_name AS doc_name
+                    OPTIONAL MATCH (a {document_name: doc_name, user_id: $user_id})
+                    WITH doc_name, count(a) AS node_count
+                    OPTIONAL MATCH (x {document_name: doc_name, user_id: $user_id})-[r:RELATES {document_name: doc_name}]->()
+                    WITH doc_name, node_count, count(r) AS edge_count
+                    RETURN doc_name, node_count, edge_count
+                    """,
+                    user_id=user_id,
+                )
+            else:
+                result = session.run(
+                    """
+                    MATCH (n)
+                    WHERE n.document_name IS NOT NULL
+                    WITH DISTINCT n.document_name AS doc_name
+                    OPTIONAL MATCH (a {document_name: doc_name})
+                    WITH doc_name, count(a) AS node_count
+                    OPTIONAL MATCH (x {document_name: doc_name})-[r:RELATES]->()
+                    WITH doc_name, node_count, count(r) AS edge_count
+                    RETURN doc_name, node_count, edge_count
+                    """
+                )
             out: List[Dict[str, Any]] = []
             for record in result:
                 out.append({
@@ -282,15 +313,32 @@ class Neo4jService:
             document_count = len(docs)
         return entity_count, edge_count, community_count, document_count
 
-    def delete_document_graph(self, document_name: str) -> bool:
-        """Delete all nodes and relationships for the given document. Returns True on success."""
+    def delete_document_graph(
+        self, document_name: str, *, user_id: Optional[str] = None
+    ) -> bool:
+        """Delete all nodes and relationships for the given document.
+
+        When user_id is provided, deletion is scoped to that user's document.
+        """
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
-            session.run(
-                "MATCH (n {document_name: $doc_name}) DETACH DELETE n",
-                doc_name=document_name,
-            )
-            logger.info("Document graph deleted from Neo4j", document_name=document_name)
+            if user_id:
+                session.run(
+                    "MATCH (n {document_name: $doc_name, user_id: $user_id}) DETACH DELETE n",
+                    doc_name=document_name,
+                    user_id=user_id,
+                )
+                logger.info(
+                    "User-scoped document graph deleted from Neo4j",
+                    document_name=document_name,
+                    user_id=user_id,
+                )
+            else:
+                session.run(
+                    "MATCH (n {document_name: $doc_name}) DETACH DELETE n",
+                    doc_name=document_name,
+                )
+                logger.info("Document graph deleted from Neo4j", document_name=document_name)
         return True
 
     # ------------------------------------------------------------------

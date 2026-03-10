@@ -271,9 +271,9 @@ pytest --cov=app --cov-report=html
 
 ### Graph Persistence (Neo4j) Endpoints
 - `POST /graph/save/{job_id}` - Save extracted graph to Neo4j and trigger the **full GraphRAG pipeline** in the background (community detection → summarization → embedding). Returns `{ ok, message, document_name, pipeline_job_id }` (uses entity job_id; requires auth).
-- `GET /graph/list` - List documents in Neo4j with node/edge counts (requires auth)
-- `GET /graph/{document_name}` - Get graph from Neo4j by document name (requires auth)
-- `DELETE /graph/{document_name}` - Delete document graph from Neo4j (requires auth)
+- `GET /graph/list` - List **current user's** documents in Neo4j with node/edge counts (requires auth)
+- `GET /graph/{document_name}` - Get **current user's** graph from Neo4j by document name (requires auth; returns 404 if not found/owned)
+- `DELETE /graph/{document_name}` - Delete **current user's** document graph from Neo4j (requires auth; returns 404 if not found/owned)
 - `GET /graph/health` - Neo4j connectivity check (requires auth)
 - `GET /graph/pipeline/status/{pipeline_job_id}` - Get status of a long‑running graph pipeline job; returns the current `step` (`community_detection`, `summarizing`, `embedding`), `step_index`, `total_steps`, `status` (`running|done|failed`), and `message`. During `summarizing`, the response also includes `community_progress` with `{ completed, total }` so the UI can show per-community progress (requires auth)
 
