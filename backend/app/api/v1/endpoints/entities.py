@@ -316,7 +316,7 @@ async def start_entity_extraction(
     Returns a job_id; use GET /extract/status/{job_id} for progress and
     GET /extract/result/{job_id} for the result when completed.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     logger.info("Entity extraction requested", user=user_id)
 
     doc = await cache_get(cache_key_document(user_id))
@@ -348,7 +348,7 @@ async def get_extraction_status(
     """
     Get the status and progress of an entity extraction job.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     key = cache_key_extraction_job(job_id)
     job = await cache_get(key)
 
@@ -378,7 +378,7 @@ async def get_extraction_result(
     Get the extraction result when the job is completed.
     Returns 202 with status if still running.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     key = cache_key_extraction_job(job_id)
     job = await cache_get(key)
 
@@ -429,7 +429,7 @@ async def get_relationship_extraction_status(
     Get the status and progress of a relationship extraction job.
     Use job_id from the entity extraction job with suffix _rel (e.g. entity_job_id_rel).
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     key = cache_key_relationship_job(job_id)
     job = await cache_get(key)
 
@@ -463,7 +463,7 @@ async def get_relationship_extraction_result(
     Get the graph-ready result (nodes + edges) when the relationship extraction job is completed.
     Returns 202 if still running.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     key = cache_key_relationship_job(job_id)
     job = await cache_get(key)
 
@@ -507,7 +507,7 @@ async def get_extraction_graph(
     Uses the entity job_id; relationship extraction is auto-triggered with job_id_rel.
     Returns the graph when relationship extraction has completed.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     entity_key = cache_key_extraction_job(job_id)
     entity_job = await cache_get(entity_key)
 

@@ -244,12 +244,12 @@ pytest --cov=app --cov-report=html
 - `GET /auth/verify` - Verify token validity (requires auth)
 
 ### Document Management Endpoints
-- `POST /documents/upload` - Upload PDF and extract text (requires auth, max 10MB); stored in Redis
-- `GET /documents/current` - Get currently stored document (requires auth)
-- `DELETE /documents/current` - Clear stored document (requires auth)
+- `POST /documents/upload` - Upload PDF and extract text (requires auth, max 10MB); stored in Redis under the authenticated user's stable UUID (`str(current_user.id)`)
+- `GET /documents/current` - Get currently stored document for the authenticated user (keyed by stable UUID)
+- `DELETE /documents/current` - Clear stored document for the authenticated user (keyed by stable UUID)
 
 ### Entity Extraction Endpoints (parallel, progress via Redis)
-- `POST /entities/extract` - Start entity extraction on current document; returns `job_id` (requires auth). When complete, relationship extraction is auto-started with job_id `{job_id}_rel`.
+- `POST /entities/extract` - Start entity extraction on current document; returns `job_id` (requires auth). Jobs and per-chunk caches are scoped by the user's stable UUID (`str(current_user.id)`). When complete, relationship extraction is auto-started with job_id `{job_id}_rel`.
 - `GET /entities/extract/status/{job_id}` - Get extraction progress: status, `completed_chunks`/`total_chunks` (requires auth)
 - `GET /entities/extract/result/{job_id}` - Get extraction result when completed (requires auth; 202 if still running)
 

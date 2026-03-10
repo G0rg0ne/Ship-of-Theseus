@@ -81,7 +81,7 @@ async def upload_document(
     """
     Upload a PDF document, extract its text, and store it for the current user.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     logger.info(f"Document upload request received", user=user_id, filename=file.filename)
     
     if file.content_type and file.content_type != ALLOWED_CONTENT_TYPE:
@@ -152,7 +152,7 @@ async def get_current_document(
     """
     Get the currently stored document for the authenticated user.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     logger.info("Document retrieval request", user=user_id)
 
     doc = await cache_get(cache_key_document(user_id))
@@ -176,7 +176,7 @@ async def clear_current_document(
     """
     Remove the stored document for the authenticated user.
     """
-    user_id = current_user.email or current_user.username
+    user_id = str(current_user.id)
     logger.info("Document deletion request", user=user_id)
 
     key = cache_key_document(user_id)
