@@ -45,7 +45,7 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
-- **Admin portal**: Platform-wide statistics (users, documents, entities, relationships, communities), system health (PostgreSQL, Neo4j, Redis), and user management with optional admin promotion (admin-only; `/admin` in Next.js; `is_admin` on user model)
+ - **Admin portal**: Platform-wide statistics (users, documents, entities, relationships, communities), system health (PostgreSQL, Neo4j, Redis), and user management with optional admin promotion (admin-only; `/admin` in Next.js; `is_admin` on user model). The UI prevents an admin from toggling their own admin status; the backend API also guards against demoting the last remaining admin.
   - Admin user list now uses a single bulk Neo4j query to compute per-user document counts, avoiding N+1 Neo4j calls when paginating over many users.
 
 ### Frontend UX Notes

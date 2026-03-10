@@ -117,7 +117,7 @@ export default function AdminPage() {
   }, [token, user?.is_admin, loadData]);
 
   const handleToggleAdmin = async (userId: string) => {
-    if (!token) return;
+    if (!token || userId === user?.id) return;
     setTogglingId(userId);
     try {
       const updated = await api.toggleUserAdmin(token, userId);
@@ -400,7 +400,14 @@ export default function AdminPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleToggleAdmin(u.id)}
-                                disabled={togglingId !== null}
+                                disabled={togglingId !== null || u.id === user?.id}
+                                aria-label={
+                                  u.id === user?.id
+                                    ? "You cannot change your own admin status"
+                                    : u.is_admin
+                                    ? "Demote this user from admin"
+                                    : "Promote this user to admin"
+                                }
                               >
                                 {togglingId === u.id
                                   ? "…"
