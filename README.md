@@ -18,18 +18,6 @@ The project follows a **Graph RAG** (Graph Retrieval-Augmented Generation) desig
 - **Query phase:** A user query can target entity embeddings (specific facts) or community summary embeddings (high-level themes); results are combined into a final response.
 
 LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds both the graph and the vector indexes.
-### Example: Knowledge Graph Visualization
-
-![Example of the knowledge graph extracted from one document](assets/graph_exmp.png)
-
-**Legend:**
-
-- **Blue circles** – *Person* entities
-- **Green squares** – *Organization* entities
-- **Orange diamonds** – *Location* entities
-- **Purple hexagons** – *KeyTerm* or *Topic* nodes
-- **Arrows** – *Relationship* types (labeled edges) extracted by LLM
-- Each graph corresponds to a single document; nodes and relationships are isolated by document filename.
 
 ## Features
 
@@ -284,10 +272,12 @@ pytest --cov=app --cov-report=html
 - `DELETE /community/brain` - Permanently delete the user's brain, community nodes, and all document graphs from Neo4j; clear Redis cache (requires auth)
 
 ### Admin Endpoints (require admin user; 403 if not admin)
-- `GET /admin/stats` - Platform statistics: total/active/new (7d) users, total documents, entities, relationships, communities, avg docs per user
-- `GET /admin/users` - Paginated user list with document counts (query: `page`, `limit`; default limit 20, max 100)
-- `GET /admin/system` - System health: PostgreSQL, Neo4j, Redis status plus global Neo4j node/edge/community counts
-- `PATCH /admin/users/{user_id}/toggle-admin` - Promote or demote a user's admin status; prevents demoting the last remaining admin
+- `GET {API_V1_PREFIX}/admin/stats` - Platform statistics: total/active/new (7d) users, total documents, entities, relationships, communities, avg docs per user
+- `GET {API_V1_PREFIX}/admin/users` - Paginated user list with document counts (query: `page`, `limit`; default limit 20, max 100)
+- `GET {API_V1_PREFIX}/admin/system` - System health: PostgreSQL, Neo4j, Redis status plus global Neo4j node/edge/community counts
+- `PATCH {API_V1_PREFIX}/admin/users/{user_id}/toggle-admin` - Promote or demote a user's admin status; prevents demoting the last remaining admin
+
+**Note:** The admin router is mounted at `f"{settings.API_V1_PREFIX}/admin"` in the backend (see `backend/app/main.py`), so be sure to include the API version prefix in all admin requests to avoid 404s.
 
 **Note:** Users have an `is_admin` flag (default `false`). Set it in the database for the first admin; thereafter use the Admin portal to promote/demote others.
 
