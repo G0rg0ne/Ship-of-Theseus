@@ -15,6 +15,7 @@ from app.services.admin_service import (
     get_all_users as svc_get_all_users,
     get_platform_stats as svc_get_platform_stats,
     get_system_health as svc_get_system_health,
+    get_admin_count,
 )
 from app.services.neo4j_service import Neo4jService
 from app.services.user_service import get_user_by_id
@@ -75,6 +76,14 @@ async def toggle_user_admin(
     user = await get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    # Prevent removing the last remaining admin
+    if user.is_admin:
+        admin_count = await get_admin_count(db)
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove the last admin user",
+            )
     user.is_admin = not user.is_admin
     await db.flush()
     await db.refresh(user)

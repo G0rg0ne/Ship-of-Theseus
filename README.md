@@ -286,7 +286,7 @@ pytest --cov=app --cov-report=html
 - `GET /admin/stats` - Platform statistics: total/active/new (7d) users, total documents, entities, relationships, communities, avg docs per user
 - `GET /admin/users` - Paginated user list with document counts (query: `page`, `limit`; default limit 20, max 100)
 - `GET /admin/system` - System health: PostgreSQL, Neo4j, Redis status plus global Neo4j node/edge/community counts
-- `PATCH /admin/users/{user_id}/toggle-admin` - Promote or demote a user's admin status
+- `PATCH /admin/users/{user_id}/toggle-admin` - Promote or demote a user's admin status; prevents demoting the last remaining admin
 
 **Note:** Users have an `is_admin` flag (default `false`). Set it in the database for the first admin; thereafter use the Admin portal to promote/demote others.
 

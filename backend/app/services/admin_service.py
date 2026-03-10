@@ -60,6 +60,17 @@ async def get_platform_stats(
     )
 
 
+async def get_admin_count(db: AsyncSession) -> int:
+    """Return the number of active admin users."""
+    result = await db.execute(
+        select(func.count(User.id)).where(
+            User.is_admin.is_(True),
+            User.is_active.is_(True),
+        )
+    )
+    return result.scalar() or 0
+
+
 async def get_all_users(
     db: AsyncSession,
     neo4j: Optional[Neo4jService],
