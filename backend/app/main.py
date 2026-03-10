@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logger import logger, configure_logging
-from app.api.v1.endpoints import auth, documents, entities, graph, community
+from app.api.v1.endpoints import admin, auth, documents, entities, graph, community
 from app.db.init_db import create_tables
 from app.services.neo4j_service import Neo4jService
 
@@ -37,6 +37,7 @@ app.include_router(documents.router, prefix=f"{settings.API_V1_PREFIX}/documents
 app.include_router(entities.router, prefix=f"{settings.API_V1_PREFIX}/entities", tags=["entities"])
 app.include_router(graph.router, prefix=f"{settings.API_V1_PREFIX}/graph", tags=["graph"])
 app.include_router(community.router, prefix=f"{settings.API_V1_PREFIX}/community", tags=["community"])
+app.include_router(admin.router, prefix=f"{settings.API_V1_PREFIX}/admin", tags=["admin"])
 
 
 @app.get("/")

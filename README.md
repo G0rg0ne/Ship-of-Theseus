@@ -45,6 +45,7 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 - 🐳 Docker Compose orchestration (backend, frontend, Redis, Neo4j, PostgreSQL)
 - 📝 Loguru-based logging with automatic rotation and compression
 - 📁 Well-organized project structure
+- **Admin portal**: Platform-wide statistics (users, documents, entities, relationships, communities), system health (PostgreSQL, Neo4j, Redis), and user management with optional admin promotion (admin-only; `/admin` in Next.js; `is_admin` on user model)
 
 ### Frontend UX Notes
 
@@ -72,7 +73,8 @@ Ship-of-Theseus/
 │   │   │       │   ├── documents.py
 │   │   │       │   ├── entities.py   # Entity extraction (parallel, progress)
 │   │   │       │   ├── graph.py     # Neo4j graph persistence; triggers full GraphRAG pipeline on save + pipeline status
-│   │   │       │   └── community.py # Community detection / knowledge brain endpoints (manual full pipeline trigger)
+│   │   │       │   ├── community.py # Community detection / knowledge brain endpoints (manual full pipeline trigger)
+│   │   │       │   └── admin.py     # Admin-only: stats, users list, system health, toggle admin
 │   │   │       └── deps.py      # Dependencies
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings & configuration
@@ -85,14 +87,16 @@ Ship-of-Theseus/
 │   │   │   ├── relationship_extraction.json
 │   │   │   └── community_summary.json   # Per-community report (leaf/mid/root)
 │   │   ├── models/              # ORM models
-│   │   │   └── user.py          # User model (PostgreSQL)
+│   │   │   └── user.py          # User model (PostgreSQL; is_admin for admin portal)
 │   │   ├── schemas/             # Pydantic schemas
 │   │   │   ├── auth.py
 │   │   │   ├── entities.py
 │   │   │   ├── relationships.py
-│   │   │   └── community.py     # UserBrain, CommunityInfo, HierarchicalCommunity, CommunityLevel
+│   │   │   ├── community.py     # UserBrain, CommunityInfo, HierarchicalCommunity, CommunityLevel
+│   │   │   └── admin.py         # PlatformStats, UserAdminView, SystemHealth, ServiceHealth
 │   │   ├── services/            # Business logic
 │   │   │   ├── user_service.py
+│   │   │   ├── admin_service.py # Platform stats, user list with doc counts, system health
 │   │   │   ├── entity_extraction_service.py
 │   │   │   ├── relationship_extraction_service.py
 │   │   │   ├── neo4j_service.py   # Graph persistence, vector indexes, community nodes, entity embeddings
@@ -104,7 +108,7 @@ Ship-of-Theseus/
 │   └── Dockerfile
 ├── frontend-next/               # Next.js 14 frontend (primary UI)
 │   ├── src/
-│   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx
+│   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx, admin/page.tsx
 │   │   ├── components/          # auth/, upload/, brain/, documents/, NodeConstellation (animated canvas)
 │   │   ├── hooks/               # useAuth, useUpload, useBrain (upload hook drives extraction + preview and then, on Add to Brain, saves + runs the background brain pipeline)
 │   │   └── lib/                 # api.ts (backend client), utils
@@ -269,6 +273,20 @@ pytest --cov=app --cov-report=html
 - `GET /community/brain` - Get current user's knowledge brain (includes `communities_by_level` with summaries when full pipeline has run; cache: Redis → Neo4j Brain node → recompute fallback; requires auth). The dashboard **Refresh** button uses this read-only endpoint to update what is shown to the user.
 - `POST /community/detect` - Run full GraphRAG pipeline: hierarchical detection (Leaf → Mid → Root), LLM summarization per community, entity and summary embedding (text-embedding-3-small), persist to Neo4j (assignments, community nodes, vector indexes); returns enriched brain (requires auth). This endpoint is available for manual or programmatic re-computation but is no longer called from the main dashboard UI.
 - `DELETE /community/brain` - Permanently delete the user's brain, community nodes, and all document graphs from Neo4j; clear Redis cache (requires auth)
+
+### Admin Endpoints (require admin user; 403 if not admin)
+- `GET /admin/stats` - Platform statistics: total/active/new (7d) users, total documents, entities, relationships, communities, avg docs per user
+- `GET /admin/users` - Paginated user list with document counts (query: `page`, `limit`; default limit 20, max 100)
+- `GET /admin/system` - System health: PostgreSQL, Neo4j, Redis status plus global Neo4j node/edge/community counts
+- `PATCH /admin/users/{user_id}/toggle-admin` - Promote or demote a user's admin status
+
+**Note:** Users have an `is_admin` flag (default `false`). Set it in the database for the first admin; thereafter use the Admin portal to promote/demote others.
+
+Example (Docker Compose + PostgreSQL):
+
+```bash
+docker compose exec postgres psql -U postgres -d shipoftheseus -c "UPDATE users SET is_admin = true WHERE username = 'admin-dev';"
+```
 
 ## 🐳 Docker, Redis, PostgreSQL, and Neo4j
 

@@ -257,6 +257,31 @@ class Neo4jService:
                 })
             return out
 
+    def get_global_counts(
+        self,
+    ) -> Tuple[int, int, int, int]:
+        """
+        Return (entity_count, edge_count, community_count, document_count) for admin stats.
+        """
+        driver = self._get_driver()
+        entity_count = edge_count = community_count = document_count = 0
+        with driver.session(database=self._database) as session:
+            r = session.run("MATCH (n:Entity) RETURN count(n) AS c")
+            rec = r.single()
+            if rec:
+                entity_count = int(rec["c"]) if rec["c"] is not None else 0
+            r = session.run("MATCH ()-[r:RELATES]->() RETURN count(r) AS c")
+            rec = r.single()
+            if rec:
+                edge_count = int(rec["c"]) if rec["c"] is not None else 0
+            r = session.run("MATCH (c:Community) RETURN count(c) AS c")
+            rec = r.single()
+            if rec:
+                community_count = int(rec["c"]) if rec["c"] is not None else 0
+            docs = self.list_documents()
+            document_count = len(docs)
+        return entity_count, edge_count, community_count, document_count
+
     def delete_document_graph(self, document_name: str) -> bool:
         """Delete all nodes and relationships for the given document. Returns True on success."""
         driver = self._get_driver()
