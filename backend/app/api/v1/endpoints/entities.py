@@ -216,7 +216,7 @@ async def _run_extraction_task(
         ent_list_hash = hashlib.sha256(entity_list.encode("utf-8")).hexdigest()
         rel_cache_key = cache_key_relationships_by_chunk_hash(user_id, chash, ent_list_hash)
         cached_rels = await cache_get(rel_cache_key)
-        if cached_rels:
+        if cached_rels is not None:
             try:
                 rels = [Relationship(**r) for r in cached_rels]
             except Exception:
@@ -225,20 +225,25 @@ async def _run_extraction_task(
             rels = None
 
         if rels is None:
+            extraction_succeeded = False
             try:
                 async with rel_sem:
                     rels = await rel_extractor.extract_relationship_list_async(text, ent, i)
+                extraction_succeeded = True
             except Exception as exc:
                 logger.error("Chunk relationship extraction failed", chunk_id=i, error=str(exc))
+                # Use an empty list for downstream aggregation but do not cache this failure.
                 rels = []
-            try:
-                await cache_set(
-                    rel_cache_key,
-                    [r.model_dump() if hasattr(r, "model_dump") else dict(r) for r in rels],
-                    ttl_seconds=EXTRACTION_CHUNK_CACHE_TTL,
-                )
-            except Exception:
-                pass
+            if extraction_succeeded and rels is not None:
+                try:
+                    await cache_set(
+                        rel_cache_key,
+                        [r.model_dump() if hasattr(r, "model_dump") else dict(r) for r in rels],
+                        ttl_seconds=EXTRACTION_CHUNK_CACHE_TTL,
+                    )
+                except Exception:
+                    # Cache failures must not break extraction flow
+                    pass
 
         async with relationships_lock:
             all_relationships.extend(rels)
