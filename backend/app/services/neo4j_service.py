@@ -7,6 +7,7 @@ by the community detection layer.
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
+import neo4j
 from neo4j import GraphDatabase, Driver
 
 from app.core.config import settings
@@ -52,9 +53,15 @@ class Neo4jService:
     def _get_driver(self) -> Driver:
         """Lazy-init and return the Neo4j driver."""
         if self._driver is None:
+            kwargs: Dict[str, Any] = {}
+            if hasattr(neo4j, "NotificationClassification"):
+                kwargs["notifications_disabled_classifications"] = [
+                    neo4j.NotificationClassification.UNRECOGNIZED,
+                ]
             self._driver = GraphDatabase.driver(
                 self._uri,
                 auth=(self._user, self._password),
+                **kwargs,
             )
             logger.info(
                 "Neo4j driver initialized",

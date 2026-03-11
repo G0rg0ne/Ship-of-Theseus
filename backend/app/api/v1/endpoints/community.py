@@ -10,6 +10,7 @@ Read priority for GET /brain:
   2. Neo4j Brain node  (permanent, survives cache expiry)
   3. Recompute from entity nodes  (fallback if no brain stored yet)
 """
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -69,21 +70,35 @@ async def get_user_brain(
         return UserBrain(**brain_data)
 
     # 3. Fallback: recompute from entity nodes by running the full brain pipeline.
-    # We only persist a complete brain (with summaries and embeddings), never a partial one.
+    # If user has no graph yet, return empty brain (200) so frontend can show onboarding.
     nodes, _ = neo4j.get_user_graph(user_id)
     if not nodes:
-        raise HTTPException(
-            status_code=404,
-            detail="No knowledge brain found. Add documents to the knowledge base first.",
+        return UserBrain(
+            user_id=user_id,
+            document_count=0,
+            total_nodes=0,
+            total_edges=0,
+            community_count=0,
+            communities=[],
+            communities_by_level=None,
+            last_updated=datetime.now(timezone.utc).isoformat(),
+            status="empty",
         )
 
     try:
         brain = await run_full_brain_pipeline_for_user(user_id, neo4j)
     except NoUserGraphError:
         # Should not normally occur after the nodes check above, but kept for safety.
-        raise HTTPException(
-            status_code=404,
-            detail="No knowledge brain found. Add documents to the knowledge base first.",
+        return UserBrain(
+            user_id=user_id,
+            document_count=0,
+            total_nodes=0,
+            total_edges=0,
+            community_count=0,
+            communities=[],
+            communities_by_level=None,
+            last_updated=datetime.now(timezone.utc).isoformat(),
+            status="empty",
         )
     return brain
 
