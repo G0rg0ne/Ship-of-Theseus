@@ -234,7 +234,7 @@ async def save_graph_to_neo4j(
 
     cache_user_id = current_user.email or current_user.username
     neo4j_user_id = str(current_user.id)
-    document_graph = await _get_graph_from_cache(job_id, cache_user_id)
+    document_graph = await _get_graph_from_cache(job_id, neo4j_user_id)
     if not neo4j:
         raise HTTPException(
             status_code=503,
