@@ -414,7 +414,7 @@ httpx
 1. Start backend: `uvicorn backend.app.main:app --reload`
 2. Start frontend: `streamlit run frontend/app.py`
 3. Backend runs on: http://localhost:8000
-4. Frontend runs on: http://localhost:8501
+4. Frontend runs on: http://localhost:3000
 5. API docs available at: http://localhost:8000/docs
 6. **After completing work: Update README.md and DEVELOPMENT.md**
 
