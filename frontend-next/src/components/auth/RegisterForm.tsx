@@ -15,16 +15,19 @@ export function RegisterForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setSuccessMessage(null);
     setLoading(true);
     try {
-      await register(username, email, password);
+      const data = await register(username, email, password);
       setUsername("");
       setEmail("");
       setPassword("");
-      setError("Account created. Sign in with your username and password.");
+      setSuccessMessage(data?.message ?? "Check your email to verify your account.");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -44,22 +47,26 @@ export function RegisterForm() {
     }
   }
 
-  const isSuccess = error?.includes("Account created");
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {successMessage && (
+        <p
+          className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary"
+          role="alert"
+        >
+          {successMessage}
+        </p>
+      )}
       {error && (
         <p
-          className={cn(
-            "rounded-lg px-3 py-2 text-sm",
-            isSuccess
-              ? "border border-primary/30 bg-primary/10 text-primary"
-              : "border border-destructive/30 bg-destructive/10 text-destructive"
-          )}
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           role="alert"
         >
           {error}
         </p>
       )}
+      {!successMessage && (
+      <>
       <div className="space-y-2">
         <Label htmlFor="reg-username">Username</Label>
         <Input
@@ -70,7 +77,7 @@ export function RegisterForm() {
           required
           autoComplete="username"
           disabled={loading}
-          className={cn(!isSuccess && error && "border-destructive/50 focus-visible:ring-destructive/40")}
+          className={cn(error && "border-destructive/50 focus-visible:ring-destructive/40")}
         />
       </div>
       <div className="space-y-2">
@@ -83,7 +90,7 @@ export function RegisterForm() {
           required
           autoComplete="email"
           disabled={loading}
-          className={cn(!isSuccess && error && "border-destructive/50 focus-visible:ring-destructive/40")}
+          className={cn(error && "border-destructive/50 focus-visible:ring-destructive/40")}
         />
       </div>
       <div className="space-y-2">
@@ -97,7 +104,7 @@ export function RegisterForm() {
           minLength={8}
           autoComplete="new-password"
           disabled={loading}
-          className={cn(!isSuccess && error && "border-destructive/50 focus-visible:ring-destructive/40")}
+          className={cn(error && "border-destructive/50 focus-visible:ring-destructive/40")}
         />
       </div>
       <Button type="submit" className="w-full glow-primary-hover" disabled={loading}>
@@ -110,6 +117,8 @@ export function RegisterForm() {
           "Create account"
         )}
       </Button>
+      </>
+      )}
     </form>
   );
 }

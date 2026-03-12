@@ -63,8 +63,8 @@ export default function DashboardPage() {
     }
   }, [token, authLoading, router]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.replace("/");
   };
 

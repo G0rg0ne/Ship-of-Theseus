@@ -1,6 +1,8 @@
 """
 Security utilities for JWT tokens and password hashing.
 """
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 import jwt
@@ -50,3 +52,32 @@ def decode_access_token(token: str) -> Optional[Dict]:
         return payload
     except jwt.PyJWTError:
         return None
+
+
+def create_refresh_token(data: dict) -> str:
+    """Create a JWT refresh token (long-lived, stored in httpOnly cookie)."""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({"exp": expire, "type": "refresh"})
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def decode_refresh_token(token: str) -> Optional[Dict]:
+    """Decode and validate a JWT refresh token."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "refresh":
+            return None
+        return payload
+    except jwt.PyJWTError:
+        return None
+
+
+def generate_verification_token() -> str:
+    """Generate a secure random token for email verification (raw, not hashed)."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    """Hash a token with SHA-256 for secure storage (e.g. verification token)."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

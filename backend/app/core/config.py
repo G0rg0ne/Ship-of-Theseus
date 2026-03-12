@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     # Security - REQUIRED (no defaults for security-critical values)
     SECRET_KEY: str  # Must be set in .env - will raise error if missing
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS - stored as string from env (e.g. "http://localhost:3000,http://localhost:8000")
     ALLOWED_ORIGINS: str = ",".join(DEFAULT_ALLOWED_ORIGINS)
@@ -59,6 +60,14 @@ class Settings(BaseSettings):
     
     # Redis (optional; in-memory fallback when not set)
     REDIS_URL: Optional[str] = None
+
+    # Email (for verification emails; MailHog in dev)
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "noreply@example.com"  # valid for MailHog; set to your domain in prod
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # Document chunking
     DOCUMENT_CHUNK_SIZE: int = 800

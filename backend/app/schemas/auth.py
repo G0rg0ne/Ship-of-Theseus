@@ -33,7 +33,18 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     is_admin: bool = False
+    email_verified: bool = False
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class MessageResponse(BaseModel):
+    """Generic message response (e.g. after registration or verification)."""
+    message: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Request body for resending the verification email."""
+    email: EmailStr

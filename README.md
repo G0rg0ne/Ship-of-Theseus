@@ -160,6 +160,7 @@ Ship-of-Theseus/
 4. **Access the application**:
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
+   - MailHog (dev email inbox): http://localhost:8025
    - Neo4j Browser (optional): http://localhost:7474 (Bolt: localhost:7687)
    - Health check: http://localhost:8000/
 
@@ -177,7 +178,15 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 - `DATABASE_URL` - PostgreSQL connection URL for user registration/auth (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/shipoftheseus`). **When using Docker Compose, this is overridden automatically** so the backend connects to the `postgres` service; no need to set it in `.env` for Docker.
 - `ALLOWED_ORIGINS` - CORS origins (comma-separated). Default `http://localhost:3000,http://127.0.0.1:3000`. For additional origins add them comma-separated (e.g. `http://localhost:3000,http://localhost:8000`)
 - `NEXT_PUBLIC_API_URL` - Backend API base URL for the Next.js frontend (e.g. `http://localhost:8000` when running frontend locally). **In production, this MUST be set to a browser-accessible public URL (for example `https://api.yourdomain.com`) and MUST NOT use Docker-internal hostnames like `http://backend:8000`, because this value is baked into the client-side bundle at build time.**
-- `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiration in minutes (default: `30`)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` - Access token expiration in minutes (default: `15`)
+- `REFRESH_TOKEN_EXPIRE_DAYS` - Refresh token expiration in days (default: `7`). Refresh token is stored in a **httpOnly cookie**.
+- `FRONTEND_URL` - Public frontend URL used when building email verification links (default: `http://localhost:3000`)
+- **SMTP (email verification)**:
+  - `SMTP_HOST` - SMTP server hostname (default: `localhost`; in Docker Compose it's set to `mailhog`)
+  - `SMTP_PORT` - SMTP port (default: `1025`)
+  - `SMTP_USER` - SMTP username (default: empty)
+  - `SMTP_PASSWORD` - SMTP password (default: empty)
+  - `SMTP_FROM` - From address for verification emails (default: `noreply@shipoftheseus.local`)
 - `DEBUG` - Debug mode (default: `False`)
 - `REDIS_URL` - Redis connection URL (e.g. `redis://localhost:6379/0`). If unset, in-memory cache is used. **When using Docker Compose, this is overridden to `redis://redis:6379/0`** so the backend reaches the Redis service.
 - `OPENAI_API_KEY` - Required for entity extraction; if unset, extraction endpoints return 503.
@@ -239,8 +248,12 @@ pytest --cov=app --cov-report=html
 `http://localhost:8000/api`
 
 ### Authentication Endpoints
-- `POST /auth/register` - Create a new user account (username, email, password)
-- `POST /auth/login` - Login and get JWT token
+- `POST /auth/register` - Create a new user account and send a verification email (username, email, password)
+- `GET /auth/verify-email?token=...` - Verify email address (called by the frontend verify page)
+- `POST /auth/resend-verification` - Resend verification email (`{ email }`)
+- `POST /auth/login` - Login (returns access token JSON; sets refresh token cookie)
+- `POST /auth/refresh` - Rotate refresh cookie and return a new access token (frontend calls this automatically)
+- `POST /auth/logout` - Clear refresh token cookie
 - `GET /auth/me` - Get current user info (requires auth)
 - `GET /auth/verify` - Verify token validity (requires auth)
 

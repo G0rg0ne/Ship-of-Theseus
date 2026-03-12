@@ -1,6 +1,8 @@
 ﻿const getBaseUrl = () =>
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+const defaultFetchOpts: RequestInit = { credentials: 'include' };
+
 function getHeaders(token?: string): HeadersInit {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = 'Bearer ' + token;
@@ -41,30 +43,75 @@ export interface TokenResponse {
   expires_in: number;
 }
 
-export async function register(username: string, email: string, password: string): Promise<void> {
+export async function register(username: string, email: string, password: string): Promise<{ message: string }> {
   const res = await fetch(getBaseUrl() + '/api/auth/register', {
+    ...defaultFetchOpts,
     method: 'POST', headers: getHeaders(), body: JSON.stringify({ username, email, password }),
   });
-  await handleResponse(res);
+  return handleResponse<{ message: string }>(res);
 }
 
 export async function login(username: string, password: string): Promise<{ token: string; user: UserResponse }> {
   const res = await fetch(getBaseUrl() + '/api/auth/login', {
+    ...defaultFetchOpts,
     method: 'POST', headers: getHeaders(), body: JSON.stringify({ username, password }),
   });
   const data = await handleResponse<TokenResponse>(res);
-  const userRes = await fetch(getBaseUrl() + '/api/auth/me', { headers: getHeaders(data.access_token) });
+  const userRes = await fetch(getBaseUrl() + '/api/auth/me', {
+    ...defaultFetchOpts,
+    headers: getHeaders(data.access_token),
+  });
   const user = await handleResponse<UserResponse>(userRes);
   return { token: data.access_token, user };
 }
 
 export async function getMe(token: string): Promise<UserResponse> {
-  const res = await fetch(getBaseUrl() + '/api/auth/me', { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + '/api/auth/me', {
+    ...defaultFetchOpts,
+    headers: getHeaders(token),
+  });
   return handleResponse<UserResponse>(res);
 }
 
+export async function refreshToken(): Promise<TokenResponse> {
+  const res = await fetch(getBaseUrl() + '/api/auth/refresh', {
+    ...defaultFetchOpts,
+    method: 'POST',
+  });
+  return handleResponse<TokenResponse>(res);
+}
+
+export async function logout(): Promise<void> {
+  const res = await fetch(getBaseUrl() + '/api/auth/logout', {
+    ...defaultFetchOpts,
+    method: 'POST',
+  });
+  await handleResponse(res);
+}
+
+export async function verifyEmail(token: string): Promise<{ message: string }> {
+  const res = await fetch(
+    getBaseUrl() + '/api/auth/verify-email?token=' + encodeURIComponent(token),
+    { ...defaultFetchOpts }
+  );
+  return handleResponse<{ message: string }>(res);
+}
+
+export async function resendVerification(email: string): Promise<{ message: string }> {
+  const res = await fetch(getBaseUrl() + '/api/auth/resend-verification', {
+    ...defaultFetchOpts,
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ email }),
+  });
+  return handleResponse<{ message: string }>(res);
+}
+
 export async function verifyToken(token: string): Promise<boolean> {
-  const res = await fetch(getBaseUrl() + '/api/auth/verify', { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + '/api/auth/verify', {
+    ...defaultFetchOpts,
+    headers: getHeaders(token),
+  });
   return res.ok;
 }
 
@@ -78,19 +125,23 @@ export async function uploadPdf(file: File, token: string): Promise<DocumentCurr
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(getBaseUrl() + "/api/documents/upload", {
+    ...defaultFetchOpts,
     method: "POST", headers: { Authorization: "Bearer " + token }, body: form,
   });
   return handleResponse<DocumentCurrent>(res);
 }
 
 export async function getCurrentDocument(token: string): Promise<DocumentCurrent | null> {
-  const res = await fetch(getBaseUrl() + "/api/documents/current", { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + "/api/documents/current", {
+    ...defaultFetchOpts,
+    headers: getHeaders(token) });
   if (res.status === 404) return null;
   return handleResponse<DocumentCurrent>(res);
 }
 
 export async function clearCurrentDocument(token: string): Promise<void> {
   const res = await fetch(getBaseUrl() + "/api/documents/current", {
+    ...defaultFetchOpts,
     method: "DELETE", headers: getHeaders(token),
   });
   await handleResponse(res);
@@ -111,24 +162,30 @@ export interface DocumentGraph {
 
 export async function startEntityExtraction(token: string): Promise<ExtractionJobStarted> {
   const res = await fetch(getBaseUrl() + "/api/entities/extract", {
+    ...defaultFetchOpts,
     method: "POST", headers: getHeaders(token),
   });
   return handleResponse<ExtractionJobStarted>(res);
 }
 
 export async function getExtractionStatus(jobId: string, token: string): Promise<ExtractionJobStatus> {
-  const res = await fetch(getBaseUrl() + "/api/entities/extract/status/" + jobId, { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + "/api/entities/extract/status/" + jobId, {
+    ...defaultFetchOpts,
+    headers: getHeaders(token) });
   return handleResponse<ExtractionJobStatus>(res);
 }
 
 export async function getExtractionGraph(jobId: string, token: string): Promise<DocumentGraph | null> {
-  const res = await fetch(getBaseUrl() + "/api/entities/extract/graph/" + jobId, { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + "/api/entities/extract/graph/" + jobId, {
+    ...defaultFetchOpts,
+    headers: getHeaders(token) });
   if (res.status === 202) return null;
   return handleResponse<DocumentGraph>(res);
 }
 
 export async function saveGraphToNeo4j(jobId: string, token: string): Promise<{ ok: boolean; document_name: string }> {
   const res = await fetch(getBaseUrl() + "/api/graph/save/" + jobId, {
+    ...defaultFetchOpts,
     method: "POST", headers: getHeaders(token),
   });
   return handleResponse(res);
@@ -136,7 +193,9 @@ export async function saveGraphToNeo4j(jobId: string, token: string): Promise<{ 
 
 export interface DocumentListItem { document_name: string; node_count: number; edge_count: number; }
 export async function listNeo4jDocuments(token: string): Promise<DocumentListItem[]> {
-  const res = await fetch(getBaseUrl() + "/api/graph/list", { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + "/api/graph/list", {
+    ...defaultFetchOpts,
+    headers: getHeaders(token) });
   const data = await handleResponse<{ documents: DocumentListItem[] }>(res);
   return data.documents;
 }
@@ -148,6 +207,7 @@ export async function getGraphFromNeo4j(documentName: string, token: string): Pr
 
 export async function deleteGraphFromNeo4j(documentName: string, token: string): Promise<void> {
   const res = await fetch(getBaseUrl() + "/api/graph/" + encodeURIComponent(documentName), {
+    ...defaultFetchOpts,
     method: "DELETE", headers: getHeaders(token),
   });
   await handleResponse(res);
@@ -162,13 +222,16 @@ export interface UserBrain {
 }
 
 export async function getUserBrain(token: string): Promise<UserBrain | null> {
-  const res = await fetch(getBaseUrl() + "/api/community/brain", { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + "/api/community/brain", {
+    ...defaultFetchOpts,
+    headers: getHeaders(token) });
   if (res.status === 404) return null;
   return handleResponse<UserBrain>(res);
 }
 
 export async function triggerCommunityDetection(token: string): Promise<UserBrain> {
   const res = await fetch(getBaseUrl() + "/api/community/detect", {
+    ...defaultFetchOpts,
     method: "POST", headers: getHeaders(token),
   });
   return handleResponse<UserBrain>(res);
@@ -176,6 +239,7 @@ export async function triggerCommunityDetection(token: string): Promise<UserBrai
 
 export async function deleteUserBrain(token: string): Promise<void> {
   const res = await fetch(getBaseUrl() + "/api/community/brain", {
+    ...defaultFetchOpts,
     method: "DELETE", headers: getHeaders(token),
   });
   await handleResponse(res);
@@ -220,7 +284,9 @@ export interface SystemHealth {
 }
 
 export async function getAdminStats(token: string): Promise<PlatformStats> {
-  const res = await fetch(getBaseUrl() + "/api/admin/stats", { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + "/api/admin/stats", {
+    ...defaultFetchOpts,
+    headers: getHeaders(token) });
   return handleResponse<PlatformStats>(res);
 }
 
@@ -231,18 +297,22 @@ export async function getAdminUsers(
 ): Promise<UserAdminView[]> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   const res = await fetch(getBaseUrl() + "/api/admin/users?" + params, {
+    ...defaultFetchOpts,
     headers: getHeaders(token),
   });
   return handleResponse<UserAdminView[]>(res);
 }
 
 export async function getSystemHealth(token: string): Promise<SystemHealth> {
-  const res = await fetch(getBaseUrl() + "/api/admin/system", { headers: getHeaders(token) });
+  const res = await fetch(getBaseUrl() + "/api/admin/system", {
+    ...defaultFetchOpts,
+    headers: getHeaders(token) });
   return handleResponse<SystemHealth>(res);
 }
 
 export async function toggleUserAdmin(token: string, userId: string): Promise<UserAdminView> {
   const res = await fetch(getBaseUrl() + "/api/admin/users/" + encodeURIComponent(userId) + "/toggle-admin", {
+    ...defaultFetchOpts,
     method: "PATCH",
     headers: getHeaders(token),
   });

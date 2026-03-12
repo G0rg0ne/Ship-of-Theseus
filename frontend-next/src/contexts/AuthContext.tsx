@@ -5,69 +5,103 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import * as api from "@/lib/api";
-
-const TOKEN_KEY = "ship_token";
-const USER_KEY = "ship_user";
 
 type AuthContextValue = {
   token: string | null;
   user: api.UserResponse | null;
   isLoading: boolean;
   setToken: (token: string | null, user: api.UserResponse | null) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Refresh access token ~80% of expiry (e.g. 12 min for 15 min token). */
+const REFRESH_AT_FRACTION = 0.8;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<api.UserResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const setToken = useCallback(
-    (newToken: string | null, newUser: api.UserResponse | null) => {
-      if (typeof window === "undefined") return;
-      if (newToken) {
-        localStorage.setItem(TOKEN_KEY, newToken);
-        if (newUser) localStorage.setItem(USER_KEY, JSON.stringify(newUser));
-      } else {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
+  const setToken = useCallback((newToken: string | null, newUser: api.UserResponse | null) => {
+    setTokenState(newToken);
+    setUser(newUser);
+  }, []);
+
+  const scheduleRefresh = useCallback((expiresInSeconds: number) => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    const delayMs = Math.max(1000, expiresInSeconds * REFRESH_AT_FRACTION * 1000);
+    refreshTimerRef.current = setTimeout(async () => {
+      refreshTimerRef.current = null;
+      try {
+        const data = await api.refreshToken();
+        setTokenState(data.access_token);
+        const u = await api.getMe(data.access_token);
+        setUser(u);
+        scheduleRefresh(data.expires_in);
+      } catch {
+        setTokenState(null);
+        setUser(null);
       }
-      setTokenState(newToken);
-      setUser(newUser);
-    },
-    []
-  );
+    }, delayMs);
+  }, []);
 
-  const logout = useCallback(() => {
-    setToken(null, null);
-  }, [setToken]);
+  const logout = useCallback(async () => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+    try {
+      await api.logout();
+    } catch {
+      // ignore
+    }
+    setTokenState(null);
+    setUser(null);
+  }, []);
 
   const refreshUser = useCallback(async () => {
-    const t = localStorage.getItem(TOKEN_KEY);
-    if (!t) return;
+    if (!token) return;
     try {
-      const u = await api.getMe(t);
+      const u = await api.getMe(token);
       setUser(u);
-      localStorage.setItem(USER_KEY, JSON.stringify(u));
     } catch {
-      logout();
+      await logout();
     }
-  }, [logout]);
+  }, [token, logout]);
 
+  /** On mount: try to restore session via refresh cookie (no localStorage). */
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const t = localStorage.getItem(TOKEN_KEY);
-    const u = localStorage.getItem(USER_KEY);
-    setTokenState(t);
-    setUser(u ? (JSON.parse(u) as api.UserResponse) : null);
-    setIsLoading(false);
-  }, []);
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api.refreshToken();
+        if (cancelled) return;
+        setTokenState(data.access_token);
+        const u = await api.getMe(data.access_token);
+        setUser(u);
+        scheduleRefresh(data.expires_in);
+      } catch {
+        if (!cancelled) {
+          setTokenState(null);
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
+  }, [scheduleRefresh]);
 
   const value: AuthContextValue = {
     token,

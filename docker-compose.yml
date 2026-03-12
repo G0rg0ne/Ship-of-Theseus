@@ -39,6 +39,16 @@ services:
       retries: 5
       start_period: 30s
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ship_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    networks:
+      - app_network
+
   postgres:
     image: postgres:16-alpine
     container_name: ship_postgres
@@ -74,6 +84,10 @@ services:
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
       REDIS_URL: "redis://redis:6379/0"
       NEO4J_URI: "bolt://neo4j:7687"
+      SMTP_HOST: "mailhog"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "noreply@example.com"
+      FRONTEND_URL: "http://localhost:3000"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -83,6 +97,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      mailhog:
+        condition: service_started
     networks:
       - app_network
     healthcheck:
