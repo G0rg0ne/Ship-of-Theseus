@@ -1,8 +1,32 @@
-# Ship of Theseus 
+## Ship of Theseus 
 
-Work in progress ...
+Ship of Theseus is a **knowledge brain for long-form documents**. You upload PDFs, we turn them into an interactive graph so you can **see how ideas connect** and ask focused questions instead of re-reading hundreds of pages.
 
-As I continue building this project, you'll find below an overview of the features that are already implemented and supported, along with a summary of the system architecture.
+The app is **always a work in progress** – features and UX are evolving quickly (see `DEVELOPMENT.md` for the full changelog).
+
+### What problem it solves
+
+- **Reading overload:** Long research papers, reports, and docs are hard to skim and easy to forget.
+- **Lost connections:** Relationships between people, organizations, places, and key ideas are buried in text.
+- **Slow Q&A:** Traditional search (“find in document”) can’t show structure or context.
+
+Ship of Theseus turns each document into a **graph of entities and relationships**, then builds a merged “knowledge brain” across all your documents so you can:
+
+- Glance at **who/what matters most** in a document.
+- Explore **clusters of related ideas** instead of isolated paragraphs.
+- Ask the brain targeted questions backed by the underlying graph.
+
+### Product snapshot
+
+![Dashboard screenshot: knowledge brain view](assets/dashboard.png)
+
+### Tools and stack (at a glance)
+
+- **Backend:** FastAPI, PostgreSQL, Redis, Neo4j, OpenAI-powered extraction and summarization.
+- **Frontend:** Next.js 14 (TypeScript, Tailwind CSS, shadcn/ui) with a dark nautical dashboard.
+- **Infrastructure & tooling:** Docker Compose, Loguru logging, Pytest test suite, GraphRAG-inspired pipelines.
+
+Below you’ll find more detailed technical documentation for contributors and operators.
 
 ## Graph RAG Architecture (Overview)
 

@@ -1,0 +1,92 @@
+---
+description: Next.js 14 / TypeScript frontend conventions and UI patterns for Ship of Theseus
+globs: frontend-next/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend Conventions
+
+## Stack
+Next.js 14 (App Router) · TypeScript · Tailwind CSS · shadcn/ui · React hooks
+
+## UI Theme
+**Nautical + Scholarly** dark theme — deep navy background, warm amber/gold accents, Crimson Pro serif headings. Do not introduce new colour variables; use existing Tailwind tokens and CSS vars.
+
+## Directory Layout
+
+```
+src/app/              App Router pages (page.tsx, layout.tsx)
+src/components/       Feature components (auth/, brain/, upload/, documents/)
+src/hooks/            Custom hooks: useAuth, useUpload, useBrain
+src/lib/api.ts        Centralised backend HTTP client
+src/lib/utils.ts      Shared helpers
+```
+
+## API Client Pattern
+
+All backend calls go through `src/lib/api.ts`. Never call `fetch` directly from page components.
+
+```typescript
+// ✅ Add new calls in api.ts
+export const api = {
+  getBrain: () =>
+    authFetch('/api/v1/community/brain') as Promise<BrainResponse>,
+};
+
+// ✅ Use in a hook or component
+const brain = await api.getBrain();
+```
+
+When a method is missing from `api.ts`, add it there — don't use inline `fetch` in pages except for one-off admin calls that are explicitly noted.
+
+## Authentication
+- Access token → React state only (never `localStorage`)
+- Refresh token → httpOnly cookie (managed by backend)
+- Use `useAuth` hook to read auth state; never import `AuthContext` directly in leaf components
+
+## State Management
+- Local UI state → `useState` / `useReducer`
+- Cross-component state → custom hooks with `useContext`
+- No external state library needed yet
+
+## Component Patterns
+
+```tsx
+// ✅ Named export, typed props
+interface BrainStatsProps {
+  entities: number;
+  relationships: number;
+}
+
+export function BrainStats({ entities, relationships }: BrainStatsProps) {
+  return (
+    <div className="flex gap-4">
+      <Stat label="Entities" value={entities} />
+      <Stat label="Relationships" value={relationships} />
+    </div>
+  );
+}
+```
+
+- Prefer small, focused components over monolithic page files
+- Extract reusable pieces into `src/components/`
+
+## Error Handling
+
+```tsx
+// ✅ Surface errors explicitly
+const [error, setError] = useState<string | null>(null);
+
+try {
+  const data = await api.getBrain();
+} catch (e) {
+  setError('Failed to load brain. Please try again.');
+}
+
+{error && <p className="text-destructive text-sm">{error}</p>}
+```
+
+## Performance
+- Use `React.memo` on pure display components that receive stable props
+- Long polling intervals: use `setInterval` inside `useEffect` with cleanup
+- Avoid triggering full re-renders of the force-directed graph on unrelated state changes

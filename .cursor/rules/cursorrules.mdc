@@ -1,525 +1,91 @@
 ---
+description: Core project standards and documentation workflow for Ship of Theseus
 alwaysApply: true
 ---
 
-# Cursor Rules for FastAPI + Streamlit Application
+# Ship of Theseus — Core Rules
 
-## Project Structure
-- `/backend` - FastAPI application
-- `/frontend` - Streamlit application
-- `/shared` - Shared utilities, models, and configurations
-- `/tests` - Test files for both backend and frontend
-- `README.md` - Living documentation (MUST BE UPDATED)
-- `DEVELOPMENT.md` - Development log and changelog (MUST BE UPDATED)
+## Project at a Glance
 
-## 🚨 CRITICAL: Documentation Requirements
+A **GraphRAG knowledge brain** app. Users upload PDFs; the system extracts entities and relationships, builds a hierarchical community graph (Louvain), summarises communities with an LLM, and embeds everything into Neo4j vector indexes for semantic search.
 
-### README.md Maintenance
-**ALWAYS update README.md when:**
-- Adding new features or endpoints
-- Changing project structure
-- Adding new dependencies
-- Modifying setup/installation steps
-- Adding new environment variables
-- Changing API endpoints or schemas
-- Adding new pages to Streamlit app
-- Implementing new services or integrations
+**Stack:** FastAPI + PostgreSQL + Neo4j + Redis · Next.js 14 (TypeScript, Tailwind, shadcn/ui) · OpenAI · Docker Compose
 
-**README.md must include:**
-1. Project overview and purpose
-2. Technology stack with versions
-3. Project structure/directory layout
-4. Setup and installation instructions
-5. Environment variables documentation
-6. Running the application (dev and prod)
-7. API endpoints documentation
-8. Available frontend pages/features
-9. Testing instructions
-10. Deployment notes
-11. Recent changes (link to DEVELOPMENT.md)
+**Services:**
+| Service | Run command | URL |
+|---|---|---|
+| Backend | `uvicorn app.main:app --reload --port 8000` (from `backend/`) | http://localhost:8000 |
+| Frontend | `npm run dev` (from `frontend-next/`) | http://localhost:3000 |
+| All (Docker) | `docker compose up -d` | — |
 
-### DEVELOPMENT.md Maintenance
-**ALWAYS append to DEVELOPMENT.md when:**
-- Completing any development task
-- Adding features
-- Fixing bugs
-- Refactoring code
-- Making architectural decisions
-- Adding new integrations
-- Changing database schemas
-- Updating dependencies
+**Directories:**
+```
+backend/            FastAPI app
+frontend-next/      Next.js 14 app (TypeScript)
+shared/             Shared Python utilities
+tests/              Python test suite
+.cursor/rules/      These rule files
+.cursor/skills/     Project skills
+```
 
-**Each entry should include:**
-- Date and time
-- Type (Feature/Bugfix/Refactor/Config/Docs)
-- Description of changes
-- Files modified
-- Rationale for decisions
-- Any breaking changes
-- Dependencies added/removed
+---
 
-**Format:**
+## Mandatory Documentation After Every Task
+
+After completing **any** coding task:
+
+1. **Update `README.md`** — new endpoints, env vars, features, changed setup steps.
+2. **Append to `DEVELOPMENT.md`** — using the format below.
+3. **Update `.env.example`** — if new environment variables were added.
+4. Suggest a git commit message.
+
+### DEVELOPMENT.md entry format
+
 ```markdown
 ## [YYYY-MM-DD HH:MM] - TYPE
 
 ### Changes
-- What was changed
+- ...
 
 ### Files Modified
-- `path/to/file.py`
+- `path/to/file`
 
 ### Rationale
-Why this change was made
+Why this change was made.
 
 ### Breaking Changes
-Any breaking changes (if applicable)
+None / description
 
 ### Next Steps
-What should be done next (if applicable)
+Optional follow-ups.
+
+---
 ```
 
-## Backend (FastAPI) Guidelines
+*TYPE = FEATURE · BUGFIX · REFACTOR · CONFIG · DOCS*
 
-### Code Style
-- Use Python 3.10+ features
-- Follow PEP 8 style guide
-- Use type hints for all functions and class methods
-- Prefer Pydantic models for request/response validation
-- Use async/await for I/O operations when possible
+---
 
-### API Design
-- Use RESTful conventions
-- Version your API (e.g., `/api/v1/`)
-- Use appropriate HTTP methods (GET, POST, PUT, DELETE, PATCH)
-- Return consistent error responses with proper status codes
-- Include proper CORS configuration for local development
-- **Document all endpoints in README.md**
+## Logging
 
-### File Organization
-```
-backend/
-├── app/
-│   ├── main.py              # FastAPI app initialization
-│   ├── api/
-│   │   └── v1/
-│   │       ├── endpoints/   # Route handlers
-│   │       └── deps.py      # Dependencies
-│   ├── core/
-│   │   ├── config.py        # Settings and configuration
-│   │   └── security.py      # Auth utilities
-│   ├── models/              # SQLAlchemy models
-│   ├── schemas/             # Pydantic schemas
-│   ├── services/            # Business logic
-│   └── db/
-│       └── database.py      # Database connection
-├── requirements.txt
-└── .env
-```
+Use **Loguru** everywhere. Import from `app.core.logger` (backend).
 
-### Best Practices
-- Use dependency injection for database sessions and authentication
-- Implement proper error handling with HTTPException
-- Use background tasks for long-running operations
-- Implement pagination for list endpoints
-- Add request validation with Pydantic
-- Use environment variables for configuration
-- **Use loguru for all logging** (see Logging section below)
-- **Update README when adding new endpoints**
-
-### Example Patterns
 ```python
-# Router example
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-
-router = APIRouter(prefix="/api/v1/items", tags=["items"])
-
-@router.get("/{item_id}")
-async def get_item(
-    item_id: int,
-    db: Session = Depends(get_db)
-):
-    # Implementation
-    pass
-```
-
-## Frontend (Streamlit) Guidelines
-
-### Code Style
-- Use Python 3.10+ features
-- Follow PEP 8 style guide
-- Use session state for managing app state
-- Organize code into reusable components
-- Use caching (`@st.cache_data`, `@st.cache_resource`) appropriately
-
-### File Organization
-```
-frontend/
-├── app.py                   # Main Streamlit app
-├── pages/                   # Multi-page app pages
-│   ├── 1_Dashboard.py
-│   ├── 2_Settings.py
-│   └── ...
-├── components/              # Reusable UI components
-├── services/                # API client services
-│   └── api_client.py
-├── utils/                   # Helper functions
-├── requirements.txt
-└── .streamlit/
-    └── config.toml          # Streamlit configuration
-```
-
-### API Integration
-- Create a centralized API client service
-- Use `requests` or `httpx` for HTTP calls
-- Implement proper error handling for API calls
-- Show loading states during API requests
-- Handle authentication tokens properly
-
-### Best Practices
-- Use session state for app-wide state management
-- Implement proper error handling with try/except and st.error()
-- Use st.spinner() for loading states
-- Cache API responses when appropriate
-- Use forms for user input
-- Implement proper page navigation
-- Use columns and containers for layout
-- Add input validation before API calls
-- **Update README when adding new pages or features**
-
-### Example Patterns
-```python
-# API Client example
-import streamlit as st
-import requests
-
-class APIClient:
-    def __init__(self, base_url: str):
-        self.base_url = base_url
-    
-    def get_items(self):
-        try:
-            response = requests.get(f"{self.base_url}/api/v1/items")
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            st.error(f"API Error: {e}")
-            return None
-
-# Usage in Streamlit
-if "api_client" not in st.session_state:
-    st.session_state.api_client = APIClient("http://localhost:8000")
-```
-
-## Logging with Loguru
-
-### Why Loguru?
-- Simple and powerful Python logging library
-- No configuration needed for basic usage
-- Beautiful console output with colors
-- Automatic file rotation and compression
-- Thread-safe by default
-- Easy exception catching with @logger.catch decorator
-
-### Import and Usage
-```python
-# Backend - import from core logger
 from app.core.logger import logger
-
-# Frontend - import from utils logger
-from utils.logger import logger
-
-# Basic logging
-logger.debug("Debug information")
-logger.info("General information")
-logger.success("Success message")  # Unique to loguru
-logger.warning("Warning message")
-logger.error("Error message")
-logger.critical("Critical issue")
-
-# Logging with context
-logger.info(f"User {user_id} performed action")
-logger.info("User {} performed {}", user_id, action)  # Better for performance
-
-# Exception logging
-try:
-    risky_operation()
-except Exception as e:
-    logger.exception("Operation failed")  # Includes full traceback
-
-# Decorator for automatic exception logging
-@logger.catch
-def might_fail():
-    return 1 / 0  # Will log exception automatically
+logger.info("User {} fetched document", user_id)
+logger.success("Pipeline finished", job_id=job_id)
+logger.warning("Neo4j unavailable, falling back to cache")
+logger.exception("Unexpected failure")   # includes traceback
 ```
 
-### Best Practices
-- **Use appropriate log levels:**
-  - DEBUG: Detailed information for diagnosing problems
-  - INFO: General informational messages
-  - SUCCESS: Successful operations (loguru-specific)
-  - WARNING: Warning messages for potentially harmful situations
-  - ERROR: Error messages for serious problems
-  - CRITICAL: Critical issues that may cause the application to fail
+- Routine path logs → `DEBUG` (not `INFO`)
+- Use `@logger.catch` on background task functions
+- Never log passwords, tokens, or PII
 
-- **Log context, not just messages:**
-  ```python
-  # Bad
-  logger.info("User login")
-  
-  # Good
-  logger.info("User login successful", user_id=user_id, ip=request.client.host)
-  ```
+---
 
-- **Use structured logging:**
-  ```python
-  logger.bind(request_id=request_id).info("Processing request")
-  ```
+## Environment Variables
 
-- **Don't log sensitive information:**
-  ```python
-  # Bad
-  logger.info(f"User logged in with password: {password}")
-  
-  # Good
-  logger.info(f"User logged in", user_id=user.id)
-  ```
-
-- **Use @logger.catch for critical functions:**
-  ```python
-  @logger.catch
-  async def critical_endpoint():
-      # Will automatically log exceptions with full context
-      pass
-  ```
-
-- **Log API requests and responses:**
-  ```python
-  logger.info("API request received", endpoint=request.url.path, method=request.method)
-  logger.info("API response sent", status_code=response.status_code, duration_ms=duration)
-  ```
-
-### Configuration Files
-- Backend: `backend/app/core/logger.py`
-- Frontend: `frontend/utils/logger.py`
-- Logs are stored in `logs/` directory
-- Automatic rotation at midnight
-- 30-day retention for general logs, 90 days for errors
-- Old logs are automatically compressed
-
-### Example Integration in FastAPI
-```python
-from fastapi import APIRouter, HTTPException
-from app.core.logger import logger
-
-router = APIRouter()
-
-@router.get("/items/{item_id}")
-@logger.catch  # Automatic exception logging
-async def get_item(item_id: int):
-    logger.info(f"Fetching item", item_id=item_id)
-    
-    try:
-        item = await fetch_item(item_id)
-        logger.success(f"Item fetched successfully", item_id=item_id)
-        return item
-    except ItemNotFound:
-        logger.warning(f"Item not found", item_id=item_id)
-        raise HTTPException(status_code=404, detail="Item not found")
-    except Exception as e:
-        logger.error(f"Failed to fetch item", item_id=item_id, error=str(e))
-        raise
-```
-
-### Example Integration in Streamlit
-```python
-import streamlit as st
-from utils.logger import logger, configure_logging
-
-# Configure logging once at app start
-if "logger_configured" not in st.session_state:
-    configure_logging()
-    st.session_state.logger_configured = True
-
-# Use logger throughout the app
-logger.info("User navigated to dashboard page")
-
-try:
-    data = fetch_data()
-    logger.success("Data fetched successfully", records=len(data))
-except Exception as e:
-    logger.exception("Failed to fetch data")
-    st.error("An error occurred while fetching data")
-```
-
-## Shared Guidelines
-
-### Environment Variables
-- Use `.env` files for local development
-- Never commit `.env` files to version control
-- Use `python-dotenv` to load environment variables
-- **Document all required environment variables in README.md and .env.example**
-- **Update both when adding new variables**
-
-### Dependencies
-- Pin major versions in requirements.txt
-- Keep dependencies minimal and well-maintained
-- Separate dev dependencies if needed
-- Use virtual environments
-- **Document new dependencies in README.md and DEVELOPMENT.md**
-
-### Testing
-- Write unit tests for business logic
-- Test API endpoints with pytest and TestClient
-- Mock external dependencies
-- Aim for >80% code coverage
-- **Document test coverage and how to run tests in README.md**
-
-### Documentation
-- Add docstrings to all functions and classes
-- Maintain a README.md with setup instructions
-- Document API endpoints (use FastAPI's automatic docs)
-- Add inline comments for complex logic
-- **Keep README.md and DEVELOPMENT.md as living documents**
-
-### Common Dependencies
-```
-# Backend
-fastapi
-uvicorn[standard]
-pydantic
-pydantic-settings
-python-dotenv
-sqlalchemy
-alembic
-python-multipart
-loguru
-
-# Frontend
-streamlit
-requests
-python-dotenv
-pandas
-plotly
-loguru
-
-# Shared
-pytest
-pytest-asyncio
-httpx
-```
-
-## Development Workflow
-
-1. Start backend: `uvicorn backend.app.main:app --reload`
-2. Start frontend: `streamlit run frontend/app.py`
-3. Backend runs on: http://localhost:8000
-4. Frontend runs on: http://localhost:3000
-5. API docs available at: http://localhost:8000/docs
-6. **After completing work: Update README.md and DEVELOPMENT.md**
-
-## Git Practices
-- Use meaningful commit messages
-- Create feature branches
-- Keep commits focused and atomic
-- Add `.gitignore` for Python projects
-- Don't commit sensitive data or credentials
-- **Reference DEVELOPMENT.md entries in commit messages**
-
-## Security
-- Never hardcode credentials
-- Use environment variables for secrets
-- Implement proper authentication/authorization
-- Validate all user inputs
-- Use HTTPS in production
-- Keep dependencies updated
-
-## 📝 Documentation Workflow (MANDATORY)
-
-### Before Starting Work
-1. Read README.md to understand current state
-2. Check DEVELOPMENT.md for recent changes
-3. Review existing code structure
-
-### During Development
-1. Take notes on changes being made
-2. Track files being modified
-3. Document any decisions or trade-offs
-
-### After Completing Work
-1. **Update README.md** with:
-   - New features in appropriate sections
-   - New environment variables
-   - New dependencies
-   - Changed setup/run instructions
-   - New API endpoints
-   - New frontend pages/features
-
-2. **Add entry to DEVELOPMENT.md** with:
-   - Date and time
-   - Type of change
-   - Detailed description
-   - Files modified
-   - Rationale
-   - Breaking changes (if any)
-
-3. **Update .env.example** if new variables added
-
-4. Commit with message referencing documentation
-
-### Example Documentation Update After Adding Feature
-
-**README.md Update:**
-```markdown
-## API Endpoints
-
-### Items
-- `GET /api/v1/items` - List all items
-- `GET /api/v1/items/{id}` - Get item by ID
-- `POST /api/v1/items` - Create new item (NEW)
-- `PUT /api/v1/items/{id}` - Update item (NEW)
-
-## Frontend Pages
-- Home - Dashboard overview
-- Items - CRUD operations for items (NEW)
-```
-
-**DEVELOPMENT.md Entry:**
-```markdown
-## [2024-01-15 14:30] - FEATURE
-
-### Changes
-- Added CRUD operations for items
-- Created Items page in Streamlit frontend
-- Implemented POST and PUT endpoints in FastAPI backend
-- Added ItemCreate and ItemUpdate Pydantic schemas
-
-### Files Modified
-- `backend/app/api/v1/endpoints/items.py`
-- `backend/app/schemas/item.py`
-- `frontend/pages/2_Items.py`
-- `frontend/services/api_client.py`
-
-### Rationale
-User requested ability to create and edit items through the UI
-
-### Breaking Changes
-None
-
-### Next Steps
-- Add delete functionality
-- Implement pagination for items list
-- Add search/filter capability
-```
-
-## AI Assistant Reminders
-
-When the AI assistant (Cursor) completes ANY development task, it MUST:
-
-1. ✅ Update README.md with relevant changes
-2. ✅ Add detailed entry to DEVELOPMENT.md
-3. ✅ Update .env.example if env vars changed
-4. ✅ Remind the user to review the documentation updates
-5. ✅ Suggest a git commit message that references the changes
-
-**The documentation is as important as the code itself.**
+- Secrets → `.env` only, never committed
+- Always document new variables in `README.md` and `.env.example`
+- Required: `SECRET_KEY`, `OPENAI_API_KEY`, `NEO4J_USER`, `NEO4J_PASSWORD`

@@ -1,0 +1,69 @@
+---
+description: FastAPI backend conventions, service patterns, and API design for Ship of Theseus
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Backend Conventions
+
+## Code Style
+- Python 3.10+, PEP 8, type hints on all functions
+- `async`/`await` for all I/O (database, Redis, OpenAI, Neo4j)
+- Pydantic models for all request/response shapes — never raw dicts
+
+## Architecture Layers
+
+```
+endpoints/   HTTP surface — thin, delegate to services
+services/    Business logic — all heavy lifting here
+schemas/     Pydantic in/out models
+models/      SQLAlchemy ORM (PostgreSQL)
+core/        Config, security, cache, logger, prompt_manager
+db/          Async engine + session factory
+```
+
+## API Design
+- Prefix: `/api/v1/`
+- Consistent error responses via `HTTPException`
+- Paginate list endpoints (`page`, `limit`; max 100)
+- All user-scoped data is isolated by `user_id` (PostgreSQL UUID)
+
+```python
+# ✅ Correct endpoint pattern
+@router.get("/{document_name}")
+@logger.catch
+async def get_document(
+    document_name: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await document_service.get(db, current_user.id, document_name)
+    if not result:
+        raise HTTPException(status_code=404, detail="Not found")
+    return result
+```
+
+## Long-running Operations
+- Use FastAPI `BackgroundTasks` or fire-and-forget coroutines
+- Track progress in Redis under a `job_id` key
+- Expose a `GET /status/{job_id}` endpoint for polling
+- Never block the event loop — wrap sync calls with `run_in_threadpool`
+
+```python
+from fastapi.concurrency import run_in_threadpool
+count = await run_in_threadpool(neo4j_service.get_count, user_id)
+```
+
+## Redis Cache
+- Documents: `documents:{user_id}` (TTL 24 h)
+- Jobs: `extraction:job:{job_id}` (TTL 1 h)
+- Brain: `community:brain:{user_id}` (TTL 24 h)
+- Always handle cache misses gracefully — fall back to DB/Neo4j
+
+## Testing
+```bash
+cd backend && pytest
+pytest --cov=app --cov-report=html
+```
+- Use `TestClient` for endpoint tests, mock external services
+- Target >80% coverage
