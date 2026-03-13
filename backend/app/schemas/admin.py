@@ -68,7 +68,7 @@ class ServiceStorageStats(BaseModel):
     )
     status: str = Field(
         "unknown",
-        description="One of: healthy, warning, critical, unknown – interpreted by the backend.",
+        description="One of: healthy, warning, critical, unknown - interpreted by the backend.",
     )
     detail: Optional[str] = Field(
         None,

@@ -468,6 +468,27 @@ None.
 
 ---
 
+## [2026-03-13 07:40] - BUGFIX
+
+### Changes
+- Normalised the `ServiceStorageStats.status` field description in the admin schemas to use an ASCII hyphen-minus in the explanatory suffix, avoiding mixed Unicode dash characters in API documentation.
+
+### Files Modified
+- `backend/app/schemas/admin.py`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Mixed Unicode dash characters in status descriptions can cause subtle inconsistencies between code, documentation, and logs; standardising on the ASCII hyphen-minus keeps admin health and infra status strings consistent and easier to search for.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-09] - FEATURE: GraphRAG Brain Pipeline
 
 ### Changes

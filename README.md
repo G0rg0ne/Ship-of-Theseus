@@ -241,4 +241,6 @@ n example knowledge brain on the welcome page.
 
 **Note:** Users have an `is_admin` flag (default `false`). Set it in the database for the first admin; thereafter use the Admin portal to promote/demote others.
 
+- **Status descriptions:** Admin health and infra status strings use ASCII hyphen-minus (`-`) punctuation only, to avoid encoding issues in logs and API documentation.
+
 
