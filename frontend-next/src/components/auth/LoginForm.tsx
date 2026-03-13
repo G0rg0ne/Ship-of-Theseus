@@ -23,6 +23,7 @@ export function LoginForm() {
     e.preventDefault();
     setError("");
     setNeedsVerification(false);
+    setVerifyEmail("");
     setVerifyMessage(null);
     setLoading(true);
     try {
