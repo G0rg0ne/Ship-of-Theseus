@@ -54,7 +54,7 @@ class StorageVolume(BaseModel):
     used_percent: float = Field(..., description="Used space percentage in [0,100]")
     status: str = Field(
         ...,
-        description="One of: healthy, warning, critical – based on configured thresholds",
+        description="One of: healthy, warning, critical - based on configured thresholds",
     )
 
 

@@ -1665,3 +1665,23 @@ None. Callers that relied on environment defaults are unaffected; callers that e
 None.
 
 ---
+
+## [2026-03-13 08:00] - BUGFIX
+
+### Changes
+- Normalised the `StorageVolume.status` field description in the admin schemas to use a standard ASCII hyphen-minus (`-`) instead of an en-dash in the phrase `critical - based on configured thresholds`, avoiding ambiguous characters when searching or copying text from OpenAPI docs.
+
+### Files Modified
+- `backend/app/schemas/admin.py`
+- `DEVELOPMENT.md`
+
+### Rationale
+The previous description string used an en-dash character (`–`) which could cause subtle issues for search, copy/paste, and tooling that expects ASCII-only punctuation in status descriptions.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
