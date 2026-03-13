@@ -51,7 +51,10 @@ export async function register(username: string, email: string, password: string
   return handleResponse<{ message: string }>(res);
 }
 
-export async function login(username: string, password: string): Promise<{ token: string; user: UserResponse }> {
+export async function login(
+  username: string,
+  password: string
+): Promise<{ token: string; user: UserResponse; expires_in: number }> {
   const res = await fetch(getBaseUrl() + '/api/auth/login', {
     ...defaultFetchOpts,
     method: 'POST', headers: getHeaders(), body: JSON.stringify({ username, password }),
@@ -62,7 +65,7 @@ export async function login(username: string, password: string): Promise<{ token
     headers: getHeaders(data.access_token),
   });
   const user = await handleResponse<UserResponse>(userRes);
-  return { token: data.access_token, user };
+  return { token: data.access_token, user, expires_in: data.expires_in };
 }
 
 export async function getMe(token: string): Promise<UserResponse> {

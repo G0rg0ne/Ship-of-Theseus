@@ -26,8 +26,8 @@ export function LoginForm() {
     setVerifyMessage(null);
     setLoading(true);
     try {
-      const { token, user } = await login(username, password);
-      setToken(token, user);
+      const { token, user, expires_in } = await login(username, password);
+      setToken(token, user, expires_in);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 403) {
