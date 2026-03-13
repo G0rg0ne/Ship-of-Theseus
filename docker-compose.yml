@@ -79,6 +79,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./data/neo4j:/data/neo4j
     environment:
       # Override for Docker network: use service names, credentials from .env
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"

@@ -109,16 +109,38 @@ def get_neo4j_store_size(neo4j: Optional[Neo4jService]) -> Tuple[Optional[int], 
     """
     Best-effort estimate of Neo4j store size in bytes.
 
-    Currently implemented as a placeholder that returns None when not available.
-    This can be extended to query Neo4j metrics/JMX endpoints in the future.
+    First tries to sum the size of files under NEO4J_DATA_PATH (if configured);
+    if that is not set or not accessible, falls back to Neo4j's internal store
+    size helper when available. Returns (None, reason) when neither works.
     """
-    if neo4j is None:
-        return None, "Neo4j not configured"
     try:
-        size = neo4j.get_store_size_bytes()
-        if size is None:
-            return None, "Neo4j store size unavailable"
-        return int(size), None
+        data_path = getattr(settings, "NEO4J_DATA_PATH", None)
+        if data_path:
+            resolved = os.path.realpath(data_path)
+            if os.path.isdir(resolved):
+                total = 0
+                for root, _dirs, files in os.walk(resolved):
+                    for name in files:
+                        fp = os.path.join(root, name)
+                        try:
+                            total += os.path.getsize(fp)
+                        except OSError:
+                            continue
+                return total, None
+            else:
+                return None, f"NEO4J_DATA_PATH does not exist or is not a directory: {resolved}"
+
+        # No filesystem path configured; fall back to Neo4j helper if available.
+        if neo4j is None:
+            return None, "Neo4j data path not configured and Neo4j service not available"
+
+        try:
+            size = neo4j.get_store_size_bytes()
+            if size is None:
+                return None, "Neo4j store size unavailable"
+            return int(size), None
+        except AttributeError:
+            return None, "Neo4j store size helper not available on this build"
     except Exception as exc:
         logger.warning("Failed to compute Neo4j store size: {}", exc)
         return None, str(exc)

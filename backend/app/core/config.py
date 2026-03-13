@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: str = "password123"
     NEO4J_DATABASE: str = "neo4j"
 
+    # Optional: filesystem path to Neo4j data directory (for admin store-size metrics).
+    # Example (dev, backend running on host): "./data/neo4j"
+    # Example (Docker, shared volume): "/data/neo4j"
+    NEO4J_DATA_PATH: Optional[str] = None
+
     # GraphRAG: community summarization and embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     COMMUNITY_SUMMARIZATION_MODEL: str = "gpt-4o-mini"
