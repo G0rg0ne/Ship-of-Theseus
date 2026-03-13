@@ -2,6 +2,7 @@
 Authentication endpoints.
 """
 from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
@@ -68,7 +69,7 @@ def _clear_refresh_cookie(response: JSONResponse) -> None:
 async def register(
     user_create: UserCreate,
     db: AsyncSession = Depends(get_db),
-):
+) -> MessageResponse:
     """Create a new user account and send verification email."""
     logger.info("Registration attempt", username=user_create.username)
     if await get_user_by_username(db, user_create.username):
@@ -127,7 +128,7 @@ async def register(
 async def login(
     user: UserLogin,
     db: AsyncSession = Depends(get_db),
-):
+) -> JSONResponse:
     """Authenticate user; return access token in body and set refresh token in httpOnly cookie."""
     logger.info("Login attempt", username=user.username)
     authenticated = await authenticate_user(db, user.username, user.password)
@@ -166,7 +167,7 @@ async def login(
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(request: Request, db: AsyncSession = Depends(get_db)):
+async def refresh(request: Request, db: AsyncSession = Depends(get_db)) -> JSONResponse:
     """Issue new access token and rotate refresh token from httpOnly cookie."""
     cookie_token = request.cookies.get(REFRESH_TOKEN_COOKIE)
     if not cookie_token:
@@ -210,7 +211,7 @@ async def refresh(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/logout")
-async def logout():
+async def logout() -> JSONResponse:
     """Clear the refresh token cookie."""
     response = JSONResponse(content={"message": "Signed out"})
     _clear_refresh_cookie(response)
@@ -221,7 +222,7 @@ async def logout():
 async def verify_email(
     token: str,
     db: AsyncSession = Depends(get_db),
-):
+) -> MessageResponse:
     """Verify email using the token from the verification link."""
     user = await verify_email_token(db, token)
     if user is None:
@@ -238,7 +239,7 @@ async def verify_email(
 async def resend_verification(
     body: ResendVerificationRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> MessageResponse:
     """Resend the verification email for the given address."""
     user = await get_user_by_email(db, body.email)
     if user is None:
@@ -263,14 +264,14 @@ async def resend_verification(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
     """Get current authenticated user information."""
     logger.info("User info request", username=current_user.username)
     return UserResponse.model_validate(current_user)
 
 
 @router.get("/verify")
-async def verify_token(current_user: User = Depends(get_current_user)):
+async def verify_token(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     """Verify if access token is valid."""
     logger.debug("Token verification request", username=current_user.username)
     return {"valid": True, "username": current_user.username}
