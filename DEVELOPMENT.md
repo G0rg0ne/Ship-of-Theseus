@@ -1604,3 +1604,23 @@ None. The admin system response is extended with an optional `infra` field; exis
 - Consider enabling Neo4j JMX procedures/metrics in production if you want store size to always populate.
 
 ---
+
+## [2026-03-13 07:05] - BUGFIX
+
+### Changes
+- Updated Neo4j store size computation in `infra_metrics_service` so that an invalid or unreadable `NEO4J_DATA_PATH` no longer short-circuits the best-effort Neo4j fallback.
+
+### Files Modified
+- `backend/app/services/infra_metrics_service.py`
+- `DEVELOPMENT.md`
+
+### Rationale
+Previously, when `NEO4J_DATA_PATH` was set but pointed to a missing/non-directory path (or when a filesystem scan raised an unexpected error), the helper returned immediately and never attempted `neo4j.get_store_size_bytes()`, weakening the intended “try filesystem, then Neo4j helper” behaviour for admin infra metrics.
+
+### Breaking Changes
+None. Behaviour is strictly more robust; error messages now prefer filesystem details when present but still fall back cleanly to Neo4j-specific reasons.
+
+### Next Steps
+- Consider surfacing the combined filesystem/Neo4j error detail in the admin UI when store size is unavailable, to aid ops debugging.
+
+---

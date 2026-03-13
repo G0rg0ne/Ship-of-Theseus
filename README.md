@@ -176,6 +176,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
   - `NEO4J_USER` - Neo4j username (set in `.env`; no default in compose)
   - `NEO4J_PASSWORD` - Neo4j password (set in `.env` only; no password appears in docker-compose)
   - `NEO4J_DATABASE` - Database name (default: `neo4j`)
+  - `NEO4J_DATA_PATH` - Optional filesystem path to the Neo4j data directory for admin infra metrics. When set, the backend first tries to sum file sizes under this path; if the path is invalid or unreadable, it records the filesystem error but still falls back to Neo4j's internal store size helper when available.
 - **GraphRAG (community summarization and embedding):**
   - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`). Neo4j vector index dimensions are derived from this model at runtime so index configuration always matches the active embedding model.
   - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)

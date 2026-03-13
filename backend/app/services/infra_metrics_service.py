@@ -113,34 +113,38 @@ def get_neo4j_store_size(neo4j: Optional[Neo4jService]) -> Tuple[Optional[int], 
     if that is not set or not accessible, falls back to Neo4j's internal store
     size helper when available. Returns (None, reason) when neither works.
     """
+    fs_error: Optional[str] = None
     try:
         data_path = getattr(settings, "NEO4J_DATA_PATH", None)
         if data_path:
             resolved = os.path.realpath(data_path)
             if os.path.isdir(resolved):
-                total = 0
-                for root, _dirs, files in os.walk(resolved):
-                    for name in files:
-                        fp = os.path.join(root, name)
-                        try:
-                            total += os.path.getsize(fp)
-                        except OSError:
-                            continue
-                return total, None
+                try:
+                    total = 0
+                    for root, _dirs, files in os.walk(resolved):
+                        for name in files:
+                            fp = os.path.join(root, name)
+                            try:
+                                total += os.path.getsize(fp)
+                            except OSError:
+                                continue
+                    return total, None
+                except Exception as exc:
+                    fs_error = f"Filesystem size scan failed: {exc}"
             else:
-                return None, f"NEO4J_DATA_PATH does not exist or is not a directory: {resolved}"
+                fs_error = f"NEO4J_DATA_PATH does not exist or is not a directory: {resolved}"
 
-        # No filesystem path configured; fall back to Neo4j helper if available.
+        # No usable filesystem path; fall back to Neo4j helper if available.
         if neo4j is None:
-            return None, "Neo4j data path not configured and Neo4j service not available"
+            return None, fs_error or "Neo4j data path not configured and Neo4j service not available"
 
         try:
             size = neo4j.get_store_size_bytes()
             if size is None:
-                return None, "Neo4j store size unavailable"
+                return None, fs_error or "Neo4j store size unavailable"
             return int(size), None
         except AttributeError:
-            return None, "Neo4j store size helper not available on this build"
+            return None, fs_error or "Neo4j store size helper not available on this build"
     except Exception as exc:
         logger.warning("Failed to compute Neo4j store size: {}", exc)
         return None, str(exc)
