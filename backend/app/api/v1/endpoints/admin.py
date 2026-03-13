@@ -108,3 +108,66 @@ async def toggle_user_admin(
         created_at=user.created_at,
         document_count=doc_count,
     )
+
+
+@router.patch("/users/{user_id}/toggle-active", response_model=UserAdminView)
+async def toggle_user_active(
+    user_id: uuid.UUID,
+    current_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+    neo4j: Neo4jService | None = Depends(get_neo4j_service),
+):
+    """
+    Activate or deactivate a user account (admin only).
+
+    - Prevents an admin from changing their own active status
+    - Prevents deactivating the last active admin user
+    """
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot change your own active status",
+        )
+
+    new_is_active = not user.is_active
+
+    # If we are about to deactivate an admin, ensure they are not the last active admin.
+    if user.is_admin and user.is_active and not new_is_active:
+        admin_count = await get_admin_count(db)
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot deactivate the last active admin user",
+            )
+
+    user.is_active = new_is_active
+    await db.flush()
+    await db.refresh(user)
+
+    logger.info(
+        "User active status toggled",
+        target_user_id=str(user_id),
+        new_is_active=user.is_active,
+        by_username=current_user.username,
+    )
+
+    doc_count = 0
+    if neo4j:
+        try:
+            doc_count = neo4j.get_user_document_count(str(user.id))
+        except Exception:
+            pass
+
+    return UserAdminView(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        is_active=user.is_active,
+        is_admin=user.is_admin,
+        created_at=user.created_at,
+        document_count=doc_count,
+    )

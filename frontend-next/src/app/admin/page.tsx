@@ -131,6 +131,21 @@ export default function AdminPage() {
     }
   };
 
+  const handleToggleActive = async (userId: string) => {
+    if (!token || userId === user?.id) return;
+    setTogglingId(userId);
+    try {
+      const updated = await api.toggleUserActive(token, userId);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? updated : u))
+      );
+    } catch {
+      setError("Failed to toggle active status");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     router.replace("/");
@@ -396,25 +411,46 @@ export default function AdminPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleToggleAdmin(u.id)}
-                                disabled={togglingId !== null || u.id === user?.id}
-                                aria-label={
-                                  u.id === user?.id
-                                    ? "You cannot change your own admin status"
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleToggleAdmin(u.id)}
+                                  disabled={togglingId !== null || u.id === user?.id}
+                                  aria-label={
+                                    u.id === user?.id
+                                      ? "You cannot change your own admin status"
+                                      : u.is_admin
+                                      ? "Demote this user from admin"
+                                      : "Promote this user to admin"
+                                  }
+                                >
+                                  {togglingId === u.id
+                                    ? "…"
                                     : u.is_admin
-                                    ? "Demote this user from admin"
-                                    : "Promote this user to admin"
-                                }
-                              >
-                                {togglingId === u.id
-                                  ? "…"
-                                  : u.is_admin
-                                  ? "Demote"
-                                  : "Promote"}
-                              </Button>
+                                    ? "Demote"
+                                    : "Promote"}
+                                </Button>
+                                <Button
+                                  variant={u.is_active ? "outline" : "secondary"}
+                                  size="sm"
+                                  onClick={() => handleToggleActive(u.id)}
+                                  disabled={togglingId !== null || u.id === user?.id}
+                                  aria-label={
+                                    u.id === user?.id
+                                      ? "You cannot change your own active status"
+                                      : u.is_active
+                                      ? "Deactivate this user"
+                                      : "Activate this user"
+                                  }
+                                >
+                                  {togglingId === u.id
+                                    ? "…"
+                                    : u.is_active
+                                    ? "Deactivate"
+                                    : "Activate"}
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))
