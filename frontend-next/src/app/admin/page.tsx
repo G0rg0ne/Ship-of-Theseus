@@ -15,6 +15,10 @@ import { useAuth } from "@/hooks/useAuth";
 import * as api from "@/lib/api";
 import type { PlatformStats, SystemHealth, UserAdminView } from "@/lib/api";
 
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
 function AnchorIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -135,12 +139,38 @@ export default function AdminPage() {
     if (!token || userId === user?.id) return;
     setTogglingId(userId);
     try {
-      const updated = await api.toggleUserActive(token, userId);
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(
+        `${baseUrl}/api/v1/admin/users/${encodeURIComponent(
+          userId
+        )}/toggle-active`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (!res.ok) {
+        let message = "Failed to toggle active status";
+        try {
+          const data = (await res.json()) as { detail?: string };
+          if (data?.detail) message = data.detail;
+        } catch {
+          // ignore JSON parse errors
+        }
+        throw new Error(message);
+      }
+      const updated = (await res.json()) as UserAdminView;
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? updated : u))
       );
-    } catch {
-      setError("Failed to toggle active status");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Failed to toggle active status"
+      );
     } finally {
       setTogglingId(null);
     }

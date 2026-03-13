@@ -368,6 +368,7 @@ docker-compose down -v
 - [.cursor/rules/DEVELOPMENT.mdc](.cursor/rules/DEVELOPMENT.mdc) - Development guidelines
 - [tests/README.md](tests/README.md) - Testing guide
 - [shared/README.md](shared/README.md) - Shared utilities guide
+- `frontend-next` admin portal - Admins can view platform statistics, system health, and manage users (including toggling admin and active status) via the `/admin` page.
 
 ## 🔧 Development
 
