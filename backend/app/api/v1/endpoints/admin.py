@@ -20,6 +20,7 @@ from app.services.admin_service import (
 )
 from app.services.neo4j_service import Neo4jService
 from app.services.user_service import get_user_by_id
+from app.core.cache import cache_delete, cache_key_community_brain, cache_key_document
 
 router = APIRouter()
 
@@ -186,3 +187,73 @@ async def toggle_user_active(
         created_at=user.created_at,
         document_count=doc_count,
     )
+
+
+@router.delete("/users/{user_id}")
+async def delete_user_and_data(
+    user_id: uuid.UUID,
+    current_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+    neo4j: Neo4jService | None = Depends(get_neo4j_service),
+):
+    """
+    Permanently delete a user and all of their knowledge brain data.
+
+    - Prevents an admin from deleting themselves
+    - Prevents deleting the last remaining admin user
+    - Deletes all Neo4j graphs/brain data for the user
+    - Clears per-user Redis cache keys (document + brain)
+    - Removes the user row from PostgreSQL
+    """
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account from the admin portal",
+        )
+
+    if user.is_admin:
+        admin_count = await get_admin_count(db)
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete the last remaining admin user",
+            )
+
+    user_id_str = str(user.id)
+
+    # Best-effort cleanup of Neo4j data
+    if neo4j:
+        try:
+            await run_in_threadpool(neo4j.delete_user_data, user_id_str)
+        except Exception as exc:
+            logger.warning(
+                "Failed to delete user data from Neo4j during admin delete",
+                target_user_id=user_id_str,
+                error=str(exc),
+            )
+
+    # Best-effort cleanup of Redis / in-memory cache
+    try:
+        await cache_delete(cache_key_document(user_id_str))
+        await cache_delete(cache_key_community_brain(user_id_str))
+    except Exception as exc:
+        logger.warning(
+            "Failed to clear cache keys during admin delete",
+            target_user_id=user_id_str,
+            error=str(exc),
+        )
+
+    await db.delete(user)
+    await db.commit()
+
+    logger.success(
+        "User and associated data deleted by admin",
+        target_user_id=user_id_str,
+        by_username=current_user.username,
+    )
+
+    return {"ok": True, "message": "User and associated data deleted"}

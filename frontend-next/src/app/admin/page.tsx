@@ -79,6 +79,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !token) {
@@ -173,6 +174,45 @@ export default function AdminPage() {
       );
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!token || userId === user?.id) return;
+    const confirmed = window.confirm(
+      "This will permanently delete this user and all of their graphs/brain data. This action cannot be undone. Continue?"
+    );
+    if (!confirmed) return;
+    setDeletingId(userId);
+    setError(null);
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(
+        `${baseUrl}/api/v1/admin/users/${encodeURIComponent(userId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (!res.ok) {
+        let message = "Failed to delete user";
+        try {
+          const data = (await res.json()) as { detail?: string };
+          if (data?.detail) message = data.detail;
+        } catch {
+          // ignore JSON parse errors
+        }
+        throw new Error(message);
+      }
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete user");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -446,7 +486,7 @@ export default function AdminPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleToggleAdmin(u.id)}
-                                  disabled={togglingId !== null || u.id === user?.id}
+                                  disabled={togglingId !== null || deletingId !== null || u.id === user?.id}
                                   aria-label={
                                     u.id === user?.id
                                       ? "You cannot change your own admin status"
@@ -465,7 +505,7 @@ export default function AdminPage() {
                                   variant={u.is_active ? "outline" : "secondary"}
                                   size="sm"
                                   onClick={() => handleToggleActive(u.id)}
-                                  disabled={togglingId !== null || u.id === user?.id}
+                                  disabled={togglingId !== null || deletingId !== null || u.id === user?.id}
                                   aria-label={
                                     u.id === user?.id
                                       ? "You cannot change your own active status"
@@ -479,6 +519,19 @@ export default function AdminPage() {
                                     : u.is_active
                                     ? "Deactivate"
                                     : "Activate"}
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleDeleteUser(u.id)}
+                                  disabled={deletingId !== null || togglingId !== null || u.id === user?.id}
+                                  aria-label={
+                                    u.id === user?.id
+                                      ? "You cannot delete your own account"
+                                      : "Delete this user and all of their data"
+                                  }
+                                >
+                                  {deletingId === u.id ? "Deleting…" : "Delete"}
                                 </Button>
                               </div>
                             </td>

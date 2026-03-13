@@ -289,6 +289,29 @@ None. Existing admin toggling workflows continue to work as long as at least two
 
 ---
 
+## [2026-03-13 10:00] - FEATURE
+
+### Changes
+- Added an admin-only backend endpoint to permanently delete a user and all of their associated GraphRAG data (Neo4j graphs, community brain) and cached documents.
+- Extended the Next.js admin portal user table with a **Delete** action that prompts for confirmation and calls the new backend endpoint, preventing deletion of your own account and the last remaining admin.
+- Updated API documentation in `README.md` to describe the new admin delete-user capability.
+
+### Files Modified
+- `backend/app/api/v1/endpoints/admin.py`
+- `frontend-next/src/app/admin/page.tsx`
+- `README.md`
+
+### Rationale
+Provide admins with a clear, one-click way to fully remove a user and their knowledge brain, including underlying Neo4j and cache data, while protecting against accidental removal of the last admin or self-deletion from the portal.
+
+### Breaking Changes
+None
+
+### Next Steps
+- Consider adding an audit log entry model to record who deleted which user and when, and surface it in the admin portal for compliance.
+
+---
+
 ## [2026-03-10 10:15] - BUGFIX/SECURITY: Scope Neo4j documents per user
 
 ### Changes
