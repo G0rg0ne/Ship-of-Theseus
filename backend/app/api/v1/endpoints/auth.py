@@ -72,18 +72,49 @@ async def register(
 ) -> MessageResponse:
     """Create a new user account and send verification email."""
     logger.info("Registration attempt", username=user_create.username)
-    if await get_user_by_username(db, user_create.username):
-        logger.warning("Registration failed - username taken", username=user_create.username)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
-        )
-    if await get_user_by_email(db, user_create.email):
-        logger.warning("Registration failed - email taken", email=user_create.email)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
-        )
+    existing_by_username = await get_user_by_username(db, user_create.username)
+    if existing_by_username:
+        if (
+            not existing_by_username.email_verified
+            and (
+                existing_by_username.verification_token_expires is None
+                or existing_by_username.verification_token_expires < datetime.utcnow()
+            )
+        ):
+            logger.info(
+                "Deleting stale unverified account for username",
+                username=user_create.username,
+            )
+            await db.delete(existing_by_username)
+            await db.flush()
+        else:
+            logger.warning("Registration failed - username taken", username=user_create.username)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered",
+            )
+
+    existing_by_email = await get_user_by_email(db, user_create.email)
+    if existing_by_email:
+        if (
+            not existing_by_email.email_verified
+            and (
+                existing_by_email.verification_token_expires is None
+                or existing_by_email.verification_token_expires < datetime.utcnow()
+            )
+        ):
+            logger.info(
+                "Deleting stale unverified account for email",
+                email=user_create.email,
+            )
+            await db.delete(existing_by_email)
+            await db.flush()
+        else:
+            logger.warning("Registration failed - email taken", email=user_create.email)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered",
+            )
     user = await create_user(db, user_create)
     raw_token = generate_verification_token()
     token_hash = hash_token(raw_token)
