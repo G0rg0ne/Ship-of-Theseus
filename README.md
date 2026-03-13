@@ -1,32 +1,91 @@
-## Ship of Theseus 
+## Ship of Theseus
 
-Ship of Theseus is a **knowledge brain for long-form documents**. You upload PDFs, we turn them into an interactive graph so you can **see how ideas connect** and ask focused questions instead of re-reading hundreds of pages.
+Ship of Theseus is a **knowledge brain for long-form documents**.
+You upload PDFs, and the app builds an interactive knowledge graph so you can
+**see how ideas connect** and ask focused questions instead of re‑reading hundreds
+of pages.
 
-The app is **always a work in progress** – features and UX are evolving quickly (see `DEVELOPMENT.md` for the full changelog).
+This README is intentionally **high level**. For deep technical and operational
+details, see the links in **Where to learn more**.
 
-### What problem it solves
+---
 
-- **Reading overload:** Long research papers, reports, and docs are hard to skim and easy to forget.
-- **Lost connections:** Relationships between people, organizations, places, and key ideas are buried in text.
-- **Slow Q&A:** Traditional search (“find in document”) can’t show structure or context.
+## What you can do
 
-Ship of Theseus turns each document into a **graph of entities and relationships**, then builds a merged “knowledge brain” across all your documents so you can:
+- **Upload PDFs** and extract their content into a structured knowledge graph.
+- **See the important entities** (people, organisations, places, key concepts) in each document.
+- **Explore relationships** between entities as an interactive graph.
+- **Build a personal “knowledge brain”** that merges graphs across all your documents.
+- **Ask targeted questions** to the brain (GraphRAG‑style retrieval and LLM answers).
+- **Manage your account** with email‑based registration, login, and an admin portal.
 
-- Glance at **who/what matters most** in a document.
-- Explore **clusters of related ideas** instead of isolated paragraphs.
-- Ask the brain targeted questions backed by the underlying graph.
+---
 
-### Product snapshot
+## How it works (conceptual)
+
+At a high level, Ship of Theseus:
+
+1. **Extracts entities and relationships** from document text using LLMs.
+2. **Builds a graph** in Neo4j where nodes are entities and communities of related ideas.
+3. **Summarises communities** (leaf → mid → root) to capture higher‑level themes.
+4. **Embeds entities and summaries** into vector indexes so queries can retrieve
+   both specific facts and broad topics.
+
+You can think of it as a **GraphRAG pipeline** wrapped in a user‑friendly web app.
+
+---
+
+## Architecture at a glance
+
+- **Frontend**: Next.js 14 (TypeScript, Tailwind, shadcn/ui)
+  - Dark nautical dashboard with:
+    - PDF upload and processing flow
+    - Per‑document graph preview
+    - “Knowledge Brain” view (merged graph & metrics)
+    - Auth pages and admin portal
+- **Backend**: FastAPI
+  - REST API for auth, document upload, extraction, graph persistence, and admin
+  - GraphRAG pipeline orchestration (community detection, summarisation, embeddings)
+- **Data & infra**
+  - **PostgreSQL** for users and auth
+  - **Redis** for caching jobs and brain state
+  - **Neo4j** for the graph and vector indexes
+  - **OpenAI** for extraction, summarisation, and embeddings
+  - **Docker Compose** for local orchestration
+
+---
+
+## Visual snapshot
 
 ![Dashboard screenshot: knowledge brain view](assets/dashboard.png)
 
-### Tools and stack (at a glance)
+The dashboard shows your documents, the merged knowledge brain graph, and a
+panel for asking questions to the brain.
 
-- **Backend:** FastAPI, PostgreSQL, Redis, Neo4j, OpenAI-powered extraction and summarization.
-- **Frontend:** Next.js 14 (TypeScript, Tailwind CSS, shadcn/ui) with a dark nautical dashboard.
-- **Infrastructure & tooling:** Docker Compose, Loguru logging, Pytest test suite, GraphRAG-inspired pipelines.
 
-Below you’ll find more detailed technical documentation for contributors and operators.
+## Where to learn more
+
+Use these documents when you need more detail:
+
+- **Changelog & development history**: `DEVELOPMENT.md`
+- **Full project standards & deep docs**: `.cursor/rules/README.mdc`
+- **Cursor AI rules for this repo**: `.cursor/rules/cursorrules.mdc`
+- **Testing guide**: `tests/README.md`
+- **Shared utilities guide**: `shared/README.md`
+- **Backend API details**: FastAPI interactive docs at `http://localhost:8000/docs`
+
+These resources cover:
+
+- Exact API endpoints and schemas
+- Environment variables and deployment details
+- Internal pipeline design, logging, and testing strategy
+
+
+## License
+
+MIT
+
+# Technical Documentation
 
 ## Graph RAG Architecture (Overview)
 
@@ -73,123 +132,6 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 
 - The full GraphRAG brain pipeline (hierarchical community detection, summarization, embedding, brain persistence, and cache warming) is implemented once in a shared service (`brain_pipeline_service`) and reused by both the manual trigger endpoint and the background job started after saving a document graph, avoiding drift between the two code paths.
 
-## 📁 Project Structure
-
-```
-Ship-of-Theseus/
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI app initialization
-│   │   ├── api/
-│   │   │   └── v1/
-│   │   │       ├── endpoints/   # API route handlers
-│   │   │       │   ├── auth.py
-│   │   │       │   ├── documents.py
-│   │   │       │   ├── entities.py   # Entity extraction (parallel, progress)
-│   │   │       │   ├── graph.py     # Neo4j graph persistence; triggers full GraphRAG pipeline on save + pipeline status
-│   │   │       │   ├── community.py # Community detection / knowledge brain endpoints (manual full pipeline trigger)
-│   │   │       │   └── admin.py     # Admin-only: stats, users list, system health, toggle admin
-│   │   │       └── deps.py      # Dependencies
-│   │   ├── core/
-│   │   │   ├── config.py        # Settings & configuration
-│   │   │   ├── cache.py        # Redis cache manager
-│   │   │   ├── prompt_manager.py  # LLM prompt loader (JSON, cached)
-│   │   │   ├── security.py     # JWT & password utilities
-│   │   │   └── logger.py        # Loguru logging configuration
-│   │   ├── prompts/             # LLM prompt templates (JSON)
-│   │   │   ├── entity_extraction.json   # Entities + Identity Card (description)
-│   │   │   ├── relationship_extraction.json
-│   │   │   └── community_summary.json   # Per-community report (leaf/mid/root)
-│   │   ├── models/              # ORM models
-│   │   │   └── user.py          # User model (PostgreSQL; is_admin for admin portal)
-│   │   ├── schemas/             # Pydantic schemas
-│   │   │   ├── auth.py
-│   │   │   ├── entities.py
-│   │   │   ├── relationships.py
-│   │   │   ├── community.py     # UserBrain, CommunityInfo, HierarchicalCommunity, CommunityLevel
-│   │   │   └── admin.py         # PlatformStats, UserAdminView, SystemHealth, ServiceHealth
-│   │   ├── services/            # Business logic
-│   │   │   ├── user_service.py
-│   │   │   ├── admin_service.py # Platform stats, user list with doc counts, system health
-│   │   │   ├── entity_extraction_service.py
-│   │   │   ├── relationship_extraction_service.py
-│   │   │   ├── neo4j_service.py   # Graph persistence, vector indexes, community nodes, entity embeddings
-│   │   │   ├── community_detection_service.py  # Hierarchical Louvain (leaf/mid/root)
-│   │   │   ├── summarization_service.py       # LLM community summaries
-│   │   │   └── embedding_service.py           # text-embedding-3-small (entities + summaries)
-│   │   └── db/                  # PostgreSQL (async engine, session, init_tables)
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend-next/               # Next.js 14 frontend (primary UI)
-│   ├── src/
-│   │   ├── app/                 # App Router: page.tsx (welcome + auth), dashboard/page.tsx, admin/page.tsx
-│   │   ├── components/          # auth/, upload/, brain/, documents/, NodeConstellation (animated canvas)
-│   │   ├── hooks/               # useAuth, useUpload, useBrain (upload hook drives extraction + preview and then, on Add to Brain, saves + runs the background brain pipeline)
-│   │   └── lib/                 # api.ts (backend client), utils
-│   ├── package.json
-│   ├── next.config.ts
-│   └── Dockerfile
-├── shared/                      # Shared utilities (ready for expansion)
-├── tests/                       # Test files
-│   └── backend/
-├── logs/                        # Application logs (auto-generated)
-│   ├── app_YYYY-MM-DD.log      # Backend daily logs
-│   └── errors_YYYY-MM-DD.log   # Backend error logs
-├── scripts/                     # Helper scripts
-│   ├── ensure-data-dirs.ps1    # Create .data dirs (PowerShell)
-│   └── ensure-data-dirs.sh     # Create .data dirs (Bash/WSL)
-├── .data/                       # Local Docker data (gitignored): redis_data, neo4j_data, postgres_data
-├── .env.example                 # Environment variables template
-├── .gitignore
-├── docker-compose.yml
-└── README.md                    # This file
-```
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Docker and Docker Compose
-
-### Setup
-
-1. **Create `.env` file**:
-   ```bash
-   # Copy the example file
-   cp .env.example .env
-   
-   # Generate a secure secret key (Linux/Mac)
-   SECRET_KEY=$(openssl rand -hex 32)
-   
-   # Or manually edit .env with your values:
-   # - SECRET_KEY: Use a strong random string
-   # - DATABASE_URL: Optional; default works with docker-compose (PostgreSQL)
-   ```
-
-2. **Create local data directories** (Redis, Neo4j, PostgreSQL data are stored under `.data/` in the repo):
-   ```bash
-   # PowerShell (Windows)
-   ./scripts/ensure-data-dirs.ps1
-
-   # Bash / WSL / Git Bash
-   ./scripts/ensure-data-dirs.sh
-   ```
-   Optional: set `DATA_DIR` to a different path (e.g. absolute) in `.env` if you need data elsewhere; the scripts and Compose use it.
-
-3. **Start services**:
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **Access the application**:
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000
-   - MailHog (dev email inbox): http://localhost:8025
-   - Neo4j Browser (optional): http://localhost:7474 (Bolt: localhost:7687)
-   - Health check: http://localhost:8000/
-
-   **If you see "Cannot reach the server"**: ensure the backend is running. With Docker, all services start together. For local frontend dev, start the backend first: `cd backend && uvicorn app.main:app --reload --port 8000`. The frontend uses `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`); set it in `.env.local` or `.env` if your API is at a different URL.
-
 ## ⚙️ Environment Variables
 
 See `.env.example` (project root) for a template. **If upgrading from the previous single-user auth:** remove `USERNAME`, `USER_EMAIL`, and `USER_PASSWORD` from your `.env`; user accounts are now stored in PostgreSQL.
@@ -234,42 +176,10 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
   - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`). Neo4j vector index dimensions are derived from this model at runtime so index configuration always matches the active embedding model.
   - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)
   - `COMMUNITY_SUMMARIZATION_CONCURRENCY` - Max concurrent community-summary LLM calls per hierarchy level (default: `50`). Tune down if you hit rate limits; tune up for faster summarization.
+n example knowledge brain on the welcome page.
 
-## 🏃 Running Locally (Development)
-
-### Backend
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-```
-
-Logs will be automatically created in the `logs/` directory with automatic rotation and compression.
-
-### Frontend (Next.js)
-```bash
-cd frontend-next
-npm install
-cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL=http://localhost:8000
-npm run dev
-```
-The app runs at http://localhost:3000 (dark theme by default). Add a `brain-example.png` image under `frontend-next/public/` to show an example knowledge brain on the welcome page.
-
-## 🧪 Testing
-
-```bash
-# Backend tests
-cd backend
-pytest
-
-# Run with coverage
-pytest --cov=app --cov-report=html
-```
 
 ## 📡 API Endpoints
-
-### Base URL
-`http://localhost:8000/api`
 
 ### Authentication Endpoints
 - `POST /auth/register` - Create a new user account and queue a verification email (username, email, password)
@@ -325,120 +235,4 @@ pytest --cov=app --cov-report=html
 
 **Note:** Users have an `is_admin` flag (default `false`). Set it in the database for the first admin; thereafter use the Admin portal to promote/demote others.
 
-Example (Docker Compose + PostgreSQL):
 
-```bash
-docker compose exec postgres psql -U postgres -d shipoftheseus -c "UPDATE users SET is_admin = true WHERE username = 'admin-dev';"
-```
-
-**Implementation detail:** Neo4j nodes are scoped by `user_id` using the user's **PostgreSQL UUID** (not email/username). If you have older Neo4j data created before this change, per-user stats may show 0 until you re-save/reprocess documents or migrate existing Neo4j nodes to the UUID-based `user_id`.
-
-## 🐳 Docker, Redis, PostgreSQL, and Neo4j
-
-With Docker Compose, the backend uses **Redis** for caching, **PostgreSQL** for user accounts (registration/login), and **Neo4j** for persistent graph storage:
-- **Documents**: Stored under `documents:{user_id}` (TTL 24h)
-- **Extraction jobs**: Status and result under `extraction:job:{job_id}` (TTL 1h)
-- **Relationship jobs**: Status and graph result under `extraction:relationships:job:{job_id}` (TTL 1h)
-- **Community brain**: Per-user knowledge brain under `community:brain:{user_id}` (TTL 24h; rebuilt on each document save)
-
-- **Redis** runs as service `redis`; data is stored **locally** in `.data/redis_data/` (or `$DATA_DIR/redis_data` if set). The backend gets `REDIS_URL=redis://redis:6379/0` when using Docker. For local runs, set `REDIS_URL` (e.g. `redis://localhost:6379/0`) or leave unset to use in-memory cache.
-- **PostgreSQL** runs as service `postgres` (PostgreSQL 16). Data is stored **locally** in `.data/postgres_data/` (or `$DATA_DIR/postgres_data` if set). The backend connects via `DATABASE_URL` (injected by docker-compose). Users register and log in via the frontend; credentials are stored in PostgreSQL.
-- **Neo4j** runs as service `neo4j`. Data is stored **locally** in `.data/neo4j_data/` (or `$DATA_DIR/neo4j_data` if set). **IMPORTANT**: Set `NEO4J_URI=bolt://neo4j:7687` in `.env` when using Docker (not `localhost`). The authentication credentials (`NEO4J_USER` and `NEO4J_PASSWORD`) must match those in `docker-compose.yml` (default: `neo4j/password123`). Each document's graph is stored separately (isolated by document filename). Use the **Add to Brain** action in the PDF upload panel to save the extracted graph to Neo4j and start the brain pipeline.
-
-Create the local data directories before first run (Setup step 2), or run `scripts/ensure-data-dirs.ps1` (PowerShell) or `scripts/ensure-data-dirs.sh` (Bash/WSL).
-
-### If you see: "error while creating mount source path ... file exists" (Docker Desktop + WSL2)
-
-This is a known Docker Desktop bug with bind mounts when the project is on a Windows path. **Recommended fix: run Docker from inside WSL** so the project path is a Linux path:
-
-1. Open **WSL** (e.g. Ubuntu) and go to the project:
-   ```bash
-   cd /mnt/e/repos/Ship-of-Theseus
-   ```
-   (Use the path that matches your drive; `e` → your repo drive letter.)
-
-2. Create data dirs and start:
-   ```bash
-   ./scripts/ensure-data-dirs.sh
-   docker compose up -d
-   ```
-
-Data will still live in `.data/` under the repo (visible in both WSL and Windows at the same path).
-
-**Alternative:** From Windows, run `docker compose down`, **restart Docker Desktop**, then run `./scripts/ensure-data-dirs.ps1` and `docker compose up -d` again. If it still fails, use the WSL method above.
-
-## 🐳 Docker Commands
-
-```bash
-# View logs
-docker-compose logs -f [service_name]
-
-# Rebuild service
-docker-compose build [service_name]
-docker-compose up -d [service_name]
-
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes
-docker-compose down -v
-```
-
-## 📚 Documentation
-
-- [DEVELOPMENT.md](DEVELOPMENT.md) - Development log and changelog
-- [.cursor/rules/README.mdc](.cursor/rules/README.mdc) - Complete project documentation and standards
-- [.cursor/rules/cursorrules.mdc](.cursor/rules/cursorrules.mdc) - Cursor AI assistant rules
-- [.cursor/rules/context.mdc](.cursor/rules/context.mdc) - Project context for AI assistant
-- [.cursor/rules/DEVELOPMENT.mdc](.cursor/rules/DEVELOPMENT.mdc) - Development guidelines
-- [tests/README.md](tests/README.md) - Testing guide
-- [shared/README.md](shared/README.md) - Shared utilities guide
-- `frontend-next` admin portal - Admins can view platform statistics, system health, and manage users (including toggling admin and active status) via the `/admin` page.
-
-## 🔧 Development
-
-The project follows a modular architecture:
-
-- **Backend**: FastAPI with clean separation of concerns (routes, services, schemas, core)
-- **Frontend**: Next.js 14 (TypeScript, Tailwind CSS, shadcn/ui) with a dark nautical UI; welcome page with animated node constellation, auth panel, and a 3-panel dashboard (upload/documents, Knowledge Brain force-directed graph, Ask your brain chat)
-- **Shared**: Common utilities that can be used by both services
-- **Tests**: Comprehensive test coverage for both services
-- **Logging**: Loguru-based logging with automatic rotation, compression, and colored console output
-
-### Logging
-
-This project uses [Loguru](https://github.com/Delgan/loguru) for all logging needs.
-
-**Backend logging:**
-```python
-from app.core.logger import logger
-
-logger.info("General information")
-logger.success("Operation succeeded")
-logger.warning("Warning message")
-logger.error("Error message")
-logger.exception("Exception with traceback")
-```
-
-**Features:**
-- Automatic file rotation at midnight
-- Log retention: 30 days (general), 90 days (errors)
-- Automatic compression of old logs
-- Colored console output for better readability
-- Thread-safe logging
-- Debug level logging in files, INFO level in console
-
-See [.cursor/rules/README.mdc](.cursor/rules/README.mdc) for detailed development guidelines and project standards.
-
-### Prompt Management
-
-LLM prompts for entity and relationship extraction are stored as JSON files in `backend/app/prompts/`. The **PromptManager** (`app.core.prompt_manager`) loads and caches these prompts so you can edit prompt text without changing Python code.
-
-- **Location**: `backend/app/prompts/*.json`
-- **Format**: Each file has `name`, `description`, `version`, `template`, `input_variables`, and optional `metadata`.
-- **Usage**: Services call `PromptManager.get_prompt("entity_extraction")` or `PromptManager.get_prompt("relationship_extraction")` to get the template and input variables.
-- **Customization**: Edit the JSON files to change prompt wording; the app uses cached copies until restarted (or call `PromptManager.reload_prompt(name)` / `PromptManager.clear_cache()` to refresh).
-
-## License
-
-MIT
