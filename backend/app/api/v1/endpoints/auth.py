@@ -42,8 +42,7 @@ router = APIRouter()
 
 REFRESH_TOKEN_COOKIE = "refresh_token"
 COOKIE_PATH = "/api/auth"
-# 7 days in seconds
-REFRESH_COOKIE_MAX_AGE = 7 * 24 * 3600
+REFRESH_COOKIE_MAX_AGE = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
 VERIFICATION_TOKEN_EXPIRE_HOURS = 24
 
 
