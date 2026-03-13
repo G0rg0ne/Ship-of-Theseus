@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     # Redis (optional; in-memory fallback when not set)
     REDIS_URL: Optional[str] = None
 
+    # Admin infra monitoring (optional)
+    # Comma-separated mount points to monitor for disk usage (inside backend container).
+    # Examples:
+    # - Dev (compose volume bind): "/"
+    # - Prod (host-mounted data volume): "/,/data"
+    DISK_MOUNT_PATHS: str = "/"
+    DISK_WARN_PERCENT: int = 80
+    DISK_CRIT_PERCENT: int = 90
+
     # Email (for verification emails; MailHog in dev)
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 1025

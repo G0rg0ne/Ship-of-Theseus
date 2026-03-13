@@ -16,6 +16,7 @@ from app.schemas.admin import (
     SystemHealth,
     UserAdminView,
 )
+from app.services.infra_metrics_service import get_infra_metrics
 from app.services.neo4j_service import Neo4jService
 
 
@@ -175,9 +176,13 @@ async def get_system_health(
                 e,
             )
 
+    # Infrastructure and storage metrics (disk, DB sizes, Redis memory)
+    infra = await get_infra_metrics(db, neo4j)
+
     return SystemHealth(
         services=services,
         neo4j_node_count=neo4j_node_count,
         neo4j_edge_count=neo4j_edge_count,
         neo4j_community_count=neo4j_community_count,
+        infra=infra,
     )

@@ -44,6 +44,51 @@ class ServiceHealth(BaseModel):
     detail: Optional[str] = Field(None, description="Optional status detail or error message")
 
 
+class StorageVolume(BaseModel):
+    """Disk usage for a single mounted volume or path."""
+
+    mount_path: str = Field(..., description="Filesystem path or mount point (e.g. /, /data)")
+    total_bytes: int = Field(..., description="Total capacity in bytes")
+    used_bytes: int = Field(..., description="Used space in bytes")
+    free_bytes: int = Field(..., description="Free space in bytes")
+    used_percent: float = Field(..., description="Used space percentage in [0,100]")
+    status: str = Field(
+        ...,
+        description="One of: healthy, warning, critical – based on configured thresholds",
+    )
+
+
+class ServiceStorageStats(BaseModel):
+    """Storage or memory usage for a backing service."""
+
+    name: str = Field(..., description="Service name (e.g. PostgreSQL, Neo4j, Redis)")
+    size_bytes: Optional[int] = Field(
+        None,
+        description="Total size in bytes for this service (DB/store/memory). None when unavailable.",
+    )
+    status: str = Field(
+        "unknown",
+        description="One of: healthy, warning, critical, unknown – interpreted by the backend.",
+    )
+    detail: Optional[str] = Field(
+        None,
+        description="Optional status detail or error message when computing size.",
+    )
+
+
+class InfraMetrics(BaseModel):
+    """Infrastructure and storage metrics for admin dashboard."""
+
+    volumes: List[StorageVolume] = Field(
+        default_factory=list,
+        description="Disk usage for relevant filesystem mount points.",
+    )
+    services: List[ServiceStorageStats] = Field(
+        default_factory=list,
+        description="Storage or memory usage for PostgreSQL, Neo4j, Redis, etc.",
+    )
+
+
 class SystemHealth(BaseModel):
     """System health and global Neo4j counts."""
 
@@ -51,3 +96,7 @@ class SystemHealth(BaseModel):
     neo4j_node_count: int = Field(0, description="Total nodes in Neo4j")
     neo4j_edge_count: int = Field(0, description="Total edges in Neo4j")
     neo4j_community_count: int = Field(0, description="Total community nodes in Neo4j")
+    infra: Optional[InfraMetrics] = Field(
+        None,
+        description="Optional infrastructure and storage metrics (disk, database sizes, Redis memory).",
+    )

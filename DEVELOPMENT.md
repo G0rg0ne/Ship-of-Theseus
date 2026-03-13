@@ -1572,3 +1572,35 @@ None. Rule and skill files are AI context only and do not affect runtime behavio
 - The logging cleanup plan (`.cursor/plans/logging_cleanup_4c6e7ca3.plan.md`) is still pending.
 
 ---
+
+## [2026-03-13 06:25] - FEATURE
+
+### Changes
+- Extended the admin system endpoint (`GET /api/v1/admin/system`) to return an `infra` block with storage/infra metrics.
+- Added disk usage monitoring for configurable mount paths (used/free/total + warning/critical thresholds).
+- Added PostgreSQL database size metric (`pg_database_size(current_database())`) and Redis memory usage metric (`INFO memory`).
+- Added best-effort Neo4j store size metric via `dbms.queryJmx` when available; falls back gracefully when unsupported.
+- Updated the Next.js admin portal (`/admin`) to display an “Infrastructure & storage” section (volumes + backing service sizes).
+- Added a repo-root `.env.example` template including new disk monitoring variables.
+
+### Files Modified
+- `backend/app/schemas/admin.py`
+- `backend/app/services/admin_service.py`
+- `backend/app/services/infra_metrics_service.py`
+- `backend/app/services/neo4j_service.py`
+- `backend/app/core/config.py`
+- `frontend-next/src/app/admin/page.tsx`
+- `README.md`
+- `.env.example`
+- `DEVELOPMENT.md`
+
+### Rationale
+Hetzner production hosts often have tight disk constraints; adding storage visibility to the admin portal makes it easy to detect unhealthy growth (DB/cache/graph store) before outages.
+
+### Breaking Changes
+None. The admin system response is extended with an optional `infra` field; existing consumers remain compatible.
+
+### Next Steps
+- Consider enabling Neo4j JMX procedures/metrics in production if you want store size to always populate.
+
+---
