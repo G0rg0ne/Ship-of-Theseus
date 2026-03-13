@@ -33,17 +33,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<api.UserResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionGenRef = useRef(0);
 
   const scheduleRefresh = useCallback((expiresInSeconds: number) => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     const delayMs = Math.max(1000, expiresInSeconds * REFRESH_AT_FRACTION * 1000);
     refreshTimerRef.current = setTimeout(async () => {
       refreshTimerRef.current = null;
+      const gen = sessionGenRef.current;
       try {
         const data = await api.refreshToken();
         const u = await api.getMe(data.access_token);
+        if (sessionGenRef.current !== gen) return;
         setToken(data.access_token, u, data.expires_in);
       } catch {
+        if (sessionGenRef.current !== gen) return;
         setTokenState(null);
         setUser(null);
       }
@@ -68,14 +72,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    sessionGenRef.current += 1;
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
     try {
       await api.logout();
-    } catch {
-      // ignore
+    } catch (err) {
+      setTokenState(null);
+      setUser(null);
+      throw err;
     }
     setTokenState(null);
     setUser(null);
@@ -83,10 +90,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     if (!token) return;
+    const gen = sessionGenRef.current;
+    const currentToken = token;
     try {
-      const u = await api.getMe(token);
+      const u = await api.getMe(currentToken);
+      if (sessionGenRef.current !== gen) return;
       setUser(u);
     } catch {
+      if (sessionGenRef.current !== gen) return;
       await logout();
     }
   }, [token, logout]);
@@ -94,19 +105,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /** On mount: try to restore session via refresh cookie (no localStorage). */
   useEffect(() => {
     let cancelled = false;
+    const gen = sessionGenRef.current;
     (async () => {
       try {
         const data = await api.refreshToken();
-        if (cancelled) return;
+        if (cancelled || sessionGenRef.current !== gen) return;
         const u = await api.getMe(data.access_token);
+        if (cancelled || sessionGenRef.current !== gen) return;
         setToken(data.access_token, u, data.expires_in);
       } catch {
-        if (!cancelled) {
+        if (!cancelled && sessionGenRef.current === gen) {
           setTokenState(null);
           setUser(null);
         }
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled && sessionGenRef.current === gen) setIsLoading(false);
       }
     })();
     return () => {

@@ -257,6 +257,8 @@ pytest --cov=app --cov-report=html
 - `GET /auth/me` - Get current user info (requires auth)
 - `GET /auth/verify` - Verify token validity (requires auth)
 
+**Frontend auth safety:** The Next.js auth context uses a session generation guard so stale in-flight refresh calls cannot rehydrate token/user state after logout.
+
 **Email sending behavior:** Verification emails are scheduled via FastAPI background tasks (best-effort) so the API response is not blocked by SMTP. Delivery failures will be visible in backend logs rather than as synchronous HTTP errors.
 
 ### Document Management Endpoints
