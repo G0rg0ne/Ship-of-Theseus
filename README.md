@@ -87,6 +87,68 @@ MIT
 
 # Technical Documentation
 
+## Project Overview
+
+Ship of Theseus is a **GraphRAG knowledge brain** for long-form documents: you upload PDFs, the system extracts entities and relationships, builds a hierarchical community graph (Louvain), summarises communities with an LLM, and embeds everything into Neo4j vector indexes for semantic search. The app provides a Next.js frontend and FastAPI backend with PostgreSQL auth, Redis cache, and Neo4j for the graph and vectors.
+
+## Technology Stack (key versions)
+
+| Layer | Technology | Version |
+|-------|------------|---------|
+| Backend | FastAPI | 0.104.x |
+| Backend runtime | Uvicorn | 0.24.x |
+| Frontend | Next.js | 14.2.x |
+| Frontend | React | 18.x |
+| Frontend | TypeScript | 5.x |
+| Database | PostgreSQL | 16 (Docker) |
+| Cache | Redis | 7 (Docker) |
+| Graph DB | Neo4j | 5.15 (Docker) |
+| LLM / Embeddings | OpenAI (GPT-4o-mini, text-embedding-3-small) | — |
+| Python | — | 3.10+ |
+| Node | — | 18+ |
+
+## Project Structure / Directory Layout
+
+| Path | Purpose |
+|------|---------|
+| `backend/` | FastAPI app: API, auth, extraction, GraphRAG pipeline, Neo4j, Redis, admin |
+| `frontend-next/` | Next.js 14 app (TypeScript, Tailwind, shadcn/ui): welcome, dashboard, admin |
+| `shared/` | Shared Python utilities and helpers |
+| `tests/` | Python test suite (pytest) |
+| `assets/` | Screenshots and diagrams for the README |
+| `scripts/` | Data-dir and env helpers (e.g. `ensure-data-dirs.*`) |
+| `.cursor/rules/` | Cursor AI and project rule files |
+| `.env.example` | Example environment variables (copy to `.env`) |
+
+## Setup & Installation
+
+1. **Clone the repository** and `cd` into the project root.
+2. **Copy environment template:** `cp .env.example .env`
+3. **Set required variables** in `.env` (at minimum: `SECRET_KEY`, `OPENAI_API_KEY`, `NEO4J_USER`, `NEO4J_PASSWORD`). See [Environment Variables](#️-environment-variables) below.
+4. **Option A — Docker Compose (recommended for full stack):**
+   - Ensure Docker and Docker Compose are installed.
+   - Run `docker compose up -d` to start backend, frontend, PostgreSQL, Redis, Neo4j, and (for dev) Mailhog.
+   - Use the URLs printed by Compose (e.g. frontend on port 3000, backend on 8000).
+5. **Option B — Local dev (backend + frontend without Docker):**
+   - **Backend:** Python 3.10+, create a venv, `pip install -r backend/requirements.txt`, set `DATABASE_URL`, `REDIS_URL`, `NEO4J_URI` etc. in `.env`, then from `backend/`: `uvicorn app.main:app --reload --port 8000`.
+   - **Frontend:** Node 18+, from `frontend-next/`: `npm install` then `npm run dev`.
+   - Run PostgreSQL, Redis, and Neo4j locally or via Docker and point `.env` to them.
+
+## Running
+
+### Dev
+
+- **All services (Docker):** `docker compose up -d`  
+  - Backend: http://localhost:8000  
+  - Frontend: http://localhost:3000  
+  - API docs: http://localhost:8000/docs  
+- **Backend only (local):** from `backend/`: `uvicorn app.main:app --reload --port 8000`
+- **Frontend only (local):** from `frontend-next/`: `npm run dev`
+
+### Prod
+
+- Use `docker-compose.prod.yml` (or your own prod Compose) to run backend, frontend, PostgreSQL, Redis, and Neo4j without dev-only services (e.g. Mailhog). Set `NEXT_PUBLIC_API_URL` to the public API URL and ensure secrets and env are configured for production. Build and start containers as needed (e.g. `docker compose -f docker-compose.prod.yml up -d`).
+
 ## Graph RAG Architecture (Overview)
 
 ![Graph RAG flowchart: indexing and query phases](assets/BOARD.png)
@@ -137,6 +199,19 @@ LLMs drive extraction, hierarchy building, and summary generation; Neo4j holds b
 
 See `.env.example` (project root) for a template. **If upgrading from the previous single-user auth:** remove `USERNAME`, `USER_EMAIL`, and `USER_PASSWORD` from your `.env`; user accounts are now stored in PostgreSQL.
 
+| Variable | Purpose | Default / notes |
+|----------|---------|-----------------|
+| `SECRET_KEY` | JWT signing | **Required**; e.g. `openssl rand -hex 32` |
+| `OPENAI_API_KEY` | Extraction & embeddings | Required for extraction |
+| `NEO4J_USER` / `NEO4J_PASSWORD` | Neo4j auth | Set in `.env`; no default in compose |
+| `DATABASE_URL` | PostgreSQL (auth) | `postgresql+asyncpg://...`; overridden in Docker |
+| `REDIS_URL` | Cache | Overridden to `redis://redis:6379/0` in Docker |
+| `NEXT_PUBLIC_API_URL` | Frontend → backend | **Production:** must be public URL, not Docker hostname |
+| `DISK_MOUNT_PATHS` | Admin infra: disk paths to monitor | `/`; e.g. `/,/data` |
+| `DISK_WARN_PERCENT` | Admin infra: disk warning % | `80` |
+| `DISK_CRIT_PERCENT` | Admin infra: disk critical % | `90` |
+| `NEO4J_DATA_PATH` | Admin infra: Neo4j data path for store size | Optional; fallback when Neo4j helper unavailable |
+
 ### Required Variables (app will not start without these):
 - `SECRET_KEY` - JWT secret key (generate with `openssl rand -hex 32`) - **REQUIRED**
 
@@ -182,8 +257,6 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
   - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`). Neo4j vector index dimensions are derived from this model at runtime so index configuration always matches the active embedding model.
   - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)
   - `COMMUNITY_SUMMARIZATION_CONCURRENCY` - Max concurrent community-summary LLM calls per hierarchy level (default: `50`). Tune down if you hit rate limits; tune up for faster summarization.
-n example knowledge brain on the welcome page.
-
 
 ## 📡 API Endpoints
 
@@ -244,4 +317,25 @@ n example knowledge brain on the welcome page.
 
 - **Status descriptions:** Admin health and infra status strings use ASCII hyphen-minus (`-`) punctuation only, to avoid encoding issues in logs and API documentation.
 
+## Frontend Pages / Features
+
+- **Welcome (unauthenticated):** Sign up, sign in, animated node constellation and journey strip.
+- **Dashboard (authenticated):** Left sidebar (upload + document list), center (Knowledge Brain — metrics, force-directed graph, slide-in community panel), right panel (Ask your brain chat). Upload flow: upload PDF → process document → per-document graph preview → Add to Brain (triggers GraphRAG pipeline). Pipeline progress (community detection → summarization → embedding) is shown in the UI.
+- **Admin (`/admin`, admin-only):** User list with per-user document counts, platform statistics (users, documents, entities, relationships, communities), system health (PostgreSQL, Neo4j, Redis), infrastructure & storage metrics (disk usage, Neo4j store size), and user management (toggle admin/active, delete user). Admins cannot demote or deactivate themselves or the last active admin.
+
+## Testing
+
+- **Backend:** From project root, run `pytest tests/` (or from `backend/`: `pytest`). Use a venv with dependencies from `backend/requirements.txt`. Mock external services (Neo4j, Redis, OpenAI) in tests when appropriate.
+- **Coverage:** `pytest --cov=app --cov-report=html` from the backend directory.
+- **Details:** See `tests/README.md` for structure and conventions.
+
+## Deployment Notes
+
+- Set `NEXT_PUBLIC_API_URL` to the **public** backend URL (e.g. `https://api.yourdomain.com`). Do not use Docker-internal hostnames; the value is baked into the frontend bundle at build time.
+- Use `docker-compose.prod.yml` (or equivalent) for production; ensure secrets (`SECRET_KEY`, `OPENAI_API_KEY`, `NEO4J_PASSWORD`, DB credentials) are in `.env` or your deployment secret store.
+- Admin infra: optional `DISK_MOUNT_PATHS`, `DISK_WARN_PERCENT`, `DISK_CRIT_PERCENT` for disk usage alerts on `/admin/system`. `NEO4J_DATA_PATH` can be set for filesystem-based Neo4j store size when the Neo4j helper is unavailable.
+
+## Recent changes
+
+Changelog and development history: **[DEVELOPMENT.md](DEVELOPMENT.md)**.
 
