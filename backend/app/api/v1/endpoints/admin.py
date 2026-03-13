@@ -5,6 +5,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.api.v1.deps import get_admin_user
 from app.core.logger import logger
@@ -96,9 +97,16 @@ async def toggle_user_admin(
     doc_count = 0
     if neo4j:
         try:
-            doc_count = neo4j.get_user_document_count(str(user.id))
-        except Exception:
-            pass
+            doc_count = await run_in_threadpool(
+                neo4j.get_user_document_count,
+                str(user.id),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch document count after toggling admin status",
+                target_user_id=str(user_id),
+                error=str(exc),
+            )
     return UserAdminView(
         id=user.id,
         username=user.username,
@@ -158,9 +166,16 @@ async def toggle_user_active(
     doc_count = 0
     if neo4j:
         try:
-            doc_count = neo4j.get_user_document_count(str(user.id))
-        except Exception:
-            pass
+            doc_count = await run_in_threadpool(
+                neo4j.get_user_document_count,
+                str(user.id),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch document count after toggling active status",
+                target_user_id=str(user_id),
+                error=str(exc),
+            )
 
     return UserAdminView(
         id=user.id,
