@@ -1624,3 +1624,23 @@ None. Behaviour is strictly more robust; error messages now prefer filesystem de
 - Consider surfacing the combined filesystem/Neo4j error detail in the admin UI when store size is unavailable, to aid ops debugging.
 
 ---
+
+## [2026-03-13 07:20] - BUGFIX
+
+### Changes
+- Fixed `get_disk_volumes` so that explicit `warn_percent` and `crit_percent` arguments take precedence over settings and correctly respect `0` as a valid threshold instead of treating it as falsy via `or`.
+
+### Files Modified
+- `backend/app/services/infra_metrics_service.py`
+- `DEVELOPMENT.md`
+
+### Rationale
+The previous implementation always preferred `DISK_WARN_PERCENT`/`DISK_CRIT_PERCENT` from settings when defined and used `warn_percent or 80`/`crit_percent or 90`, causing passed-in thresholds (especially `0`) to be ignored or overridden unintentionally in admin infra metrics.
+
+### Breaking Changes
+None. Callers that relied on environment defaults are unaffected; callers that explicitly passed thresholds now get the intended behaviour.
+
+### Next Steps
+None.
+
+---

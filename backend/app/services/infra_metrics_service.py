@@ -55,8 +55,15 @@ def get_disk_volumes(
     paths = list(mount_paths) if mount_paths is not None else _parse_mount_paths(
         getattr(settings, "DISK_MOUNT_PATHS", None)  # type: ignore[attr-defined]
     )
-    warn = float(getattr(settings, "DISK_WARN_PERCENT", warn_percent or 80))  # type: ignore[attr-defined]
-    crit = float(getattr(settings, "DISK_CRIT_PERCENT", crit_percent or 90))  # type: ignore[attr-defined]
+    if warn_percent is not None:
+        warn = float(warn_percent)
+    else:
+        warn = float(getattr(settings, "DISK_WARN_PERCENT", 80))  # type: ignore[attr-defined]
+
+    if crit_percent is not None:
+        crit = float(crit_percent)
+    else:
+        crit = float(getattr(settings, "DISK_CRIT_PERCENT", 90))  # type: ignore[attr-defined]
 
     volumes: List[StorageVolume] = []
     for path in paths:
