@@ -295,6 +295,7 @@ pytest --cov=app --cov-report=html
 - `GET {API_V1_PREFIX}/admin/users` - Paginated user list with document counts (query: `page`, `limit`; default limit 20, max 100)
 - `GET {API_V1_PREFIX}/admin/system` - System health: PostgreSQL, Neo4j, Redis status plus global Neo4j node/edge/community counts
 - `PATCH {API_V1_PREFIX}/admin/users/{user_id}/toggle-admin` - Promote or demote a user's admin status; prevents demoting the last remaining admin
+- `PATCH {API_V1_PREFIX}/admin/users/{user_id}/toggle-active` - Toggle a user's active status (activate/deactivate); prevents changing your own active status and deactivating the last active admin
 
 **Note:** The admin router is mounted at `f"{settings.API_V1_PREFIX}/admin"` in the backend (see `backend/app/main.py`), so be sure to include the API version prefix in all admin requests to avoid 404s.
 
