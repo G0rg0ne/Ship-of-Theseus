@@ -55,15 +55,60 @@ def get_disk_volumes(
     paths = list(mount_paths) if mount_paths is not None else _parse_mount_paths(
         getattr(settings, "DISK_MOUNT_PATHS", None)  # type: ignore[attr-defined]
     )
-    if warn_percent is not None:
-        warn = float(warn_percent)
-    else:
-        warn = float(getattr(settings, "DISK_WARN_PERCENT", 80))  # type: ignore[attr-defined]
+    default_warn = getattr(settings, "DISK_WARN_PERCENT", 80)  # type: ignore[attr-defined]
+    default_crit = getattr(settings, "DISK_CRIT_PERCENT", 90)  # type: ignore[attr-defined]
 
-    if crit_percent is not None:
-        crit = float(crit_percent)
+    # Safely parse warn threshold, falling back to defaults on error.
+    if warn_percent is not None:
+        try:
+            warn = float(warn_percent)
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Invalid warn_percent for disk volumes; falling back to DISK_WARN_PERCENT",
+                value=warn_percent,
+                default=default_warn,
+                error=str(exc),
+            )
+            try:
+                warn = float(default_warn)
+            except (TypeError, ValueError):
+                warn = 80.0
     else:
-        crit = float(getattr(settings, "DISK_CRIT_PERCENT", 90))  # type: ignore[attr-defined]
+        try:
+            warn = float(default_warn)
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Invalid DISK_WARN_PERCENT setting; falling back to built-in default",
+                value=default_warn,
+                error=str(exc),
+            )
+            warn = 80.0
+
+    # Safely parse critical threshold, falling back to defaults on error.
+    if crit_percent is not None:
+        try:
+            crit = float(crit_percent)
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Invalid crit_percent for disk volumes; falling back to DISK_CRIT_PERCENT",
+                value=crit_percent,
+                default=default_crit,
+                error=str(exc),
+            )
+            try:
+                crit = float(default_crit)
+            except (TypeError, ValueError):
+                crit = 90.0
+    else:
+        try:
+            crit = float(default_crit)
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Invalid DISK_CRIT_PERCENT setting; falling back to built-in default",
+                value=default_crit,
+                error=str(exc),
+            )
+            crit = 90.0
 
     volumes: List[StorageVolume] = []
     for path in paths:
@@ -153,8 +198,12 @@ def get_neo4j_store_size(neo4j: Optional[Neo4jService]) -> Tuple[Optional[int], 
         except AttributeError:
             return None, fs_error or "Neo4j store size helper not available on this build"
     except Exception as exc:
-        logger.warning("Failed to compute Neo4j store size: {}", exc)
-        return None, str(exc)
+        if fs_error:
+            error_detail = f"{fs_error}; Neo4j error: {exc}"
+        else:
+            error_detail = f"Neo4j store size computation failed: {exc}"
+        logger.warning(error_detail)
+        return None, error_detail
 
 
 async def get_redis_memory_usage() -> Tuple[Optional[int], Optional[int], Optional[str]]:
@@ -188,7 +237,11 @@ async def get_infra_metrics(
     Designed to be resilient: failures for one metric should not prevent others
     from being returned.
     """
-    volumes = get_disk_volumes()
+    try:
+        volumes = get_disk_volumes()
+    except Exception as exc:
+        logger.warning("Failed to collect disk volume metrics: {}", exc)
+        volumes = []
 
     postgres_size_bytes, pg_error = await get_postgres_size(db)
     neo4j_size_bytes, neo4j_error = await run_in_threadpool(get_neo4j_store_size, neo4j)

@@ -1685,3 +1685,46 @@ None.
 None.
 
 ---
+
+## [2026-03-13 09:15] - BUGFIX
+
+### Changes
+- Hardened admin infrastructure disk metrics so invalid or non-numeric `DISK_WARN_PERCENT` / `DISK_CRIT_PERCENT` settings no longer cause a `ValueError`; instead, threshold parsing now falls back to safe defaults and logs a warning.
+- Wrapped disk volume enumeration in `get_infra_metrics` in a `try`/`except` block so failures in `get_disk_volumes()` result in an empty disk volumes list and a logged warning rather than breaking the entire `/admin/system` response.
+
+### Files Modified
+- `backend/app/services/infra_metrics_service.py`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Admin system health reporting is designed to be best-effort; disk threshold misconfiguration or disk enumeration failures should degrade gracefully and still return PostgreSQL/Neo4j/Redis metrics instead of surfacing uncaught exceptions to callers.
+
+### Breaking Changes
+None. The behaviour change is limited to more resilient error handling for disk threshold parsing and enumeration; valid configurations are unaffected.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-13 09:45] - BUGFIX
+
+### Changes
+- Updated Neo4j store size fallback error handling in `infra_metrics_service` so that filesystem scan errors (when `NEO4J_DATA_PATH` is set) are preserved and combined with Neo4j helper exceptions instead of being dropped, and ensured the warning log/returned error share the same combined message.
+
+### Files Modified
+- `backend/app/services/infra_metrics_service.py`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Previously, when `neo4j.get_store_size_bytes()` raised a non-`AttributeError`, the outer exception handler logged a generic message and returned only the Neo4j exception text, discarding any earlier filesystem error context collected while probing `NEO4J_DATA_PATH`, making admin infra store-size failures harder to diagnose.
+
+### Breaking Changes
+None. This is a stricter best-effort error reporting improvement; metrics remain optional and callers already treat `None` store size as a soft failure.
+
+### Next Steps
+- Consider surfacing the combined filesystem/Neo4j store-size error detail directly in the admin UI when store size is unavailable.
+
+---
