@@ -249,7 +249,8 @@ pytest --cov=app --cov-report=html
 
 ### Authentication Endpoints
 - `POST /auth/register` - Create a new user account and queue a verification email (username, email, password)
-- `GET /auth/verify-email?token=...` - Verify email address (called by the frontend verify page)
+- `GET /auth/verify-email?token=...` - Verify email address using the **verification token in the query string** (this is the link users click from the email; the frontend verify page calls this)
+- *(No `POST /auth/verify-email` route)* - Email verification is intentionally performed via the GET link token; to request a new email, use `POST /auth/resend-verification` with `{ email }`
 - `POST /auth/resend-verification` - Queue resend verification email (`{ email }`)
 - `POST /auth/login` - Login (returns access token JSON; sets refresh token cookie)
 - `POST /auth/refresh` - Rotate refresh cookie and return a new access token (frontend calls this automatically)
