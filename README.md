@@ -248,14 +248,16 @@ pytest --cov=app --cov-report=html
 `http://localhost:8000/api`
 
 ### Authentication Endpoints
-- `POST /auth/register` - Create a new user account and send a verification email (username, email, password)
+- `POST /auth/register` - Create a new user account and queue a verification email (username, email, password)
 - `GET /auth/verify-email?token=...` - Verify email address (called by the frontend verify page)
-- `POST /auth/resend-verification` - Resend verification email (`{ email }`)
+- `POST /auth/resend-verification` - Queue resend verification email (`{ email }`)
 - `POST /auth/login` - Login (returns access token JSON; sets refresh token cookie)
 - `POST /auth/refresh` - Rotate refresh cookie and return a new access token (frontend calls this automatically)
 - `POST /auth/logout` - Clear refresh token cookie
 - `GET /auth/me` - Get current user info (requires auth)
 - `GET /auth/verify` - Verify token validity (requires auth)
+
+**Email sending behavior:** Verification emails are scheduled via FastAPI background tasks (best-effort) so the API response is not blocked by SMTP. Delivery failures will be visible in backend logs rather than as synchronous HTTP errors.
 
 ### Document Management Endpoints
 - `POST /documents/upload` - Upload PDF and extract text (requires auth, max 10MB); stored in Redis under the authenticated user's stable UUID (`str(current_user.id)`)

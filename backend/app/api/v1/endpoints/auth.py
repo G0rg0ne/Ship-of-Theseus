@@ -4,7 +4,7 @@ Authentication endpoints.
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,6 +67,7 @@ def _clear_refresh_cookie(response: JSONResponse) -> None:
 
 @router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 async def register(
+    background_tasks: BackgroundTasks,
     user_create: UserCreate,
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponse:
@@ -101,7 +102,7 @@ async def register(
             smtp_host=settings.SMTP_HOST,
             smtp_port=settings.SMTP_PORT,
         )
-        await send_verification_email(user.email, raw_token)
+        background_tasks.add_task(send_verification_email, user.email, raw_token)
         email_sent = True
     except Exception as e:
         # Log message and exception so the real error is visible (console format may not show extra kwargs).
@@ -237,6 +238,7 @@ async def verify_email(
 
 @router.post("/resend-verification", response_model=MessageResponse)
 async def resend_verification(
+    background_tasks: BackgroundTasks,
     body: ResendVerificationRequest,
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponse:
@@ -252,7 +254,7 @@ async def resend_verification(
     set_verification_token(user, token_hash, expires_at)
     await db.commit()
     try:
-        await send_verification_email(user.email, raw_token)
+        background_tasks.add_task(send_verification_email, user.email, raw_token)
     except Exception as e:
         logger.warning("Resend verification email failed", email=body.email, error=str(e))
         raise HTTPException(
