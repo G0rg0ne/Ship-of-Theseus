@@ -69,6 +69,8 @@ services:
     networks:
       - ship_network
       - caddy_proxy
+    volumes:
+      - /data/neo4j:/data/neo4j
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/"]
       interval: 30s

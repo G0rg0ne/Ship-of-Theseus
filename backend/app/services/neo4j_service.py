@@ -330,6 +330,55 @@ class Neo4jService:
                 document_count = int(rec["c"]) if rec["c"] is not None else 0
         return entity_count, edge_count, community_count, document_count
 
+    def get_store_size_bytes(self) -> Optional[int]:
+        """
+        Best-effort estimate of Neo4j store size in bytes.
+
+        Uses `dbms.queryJmx` when available. Returns None if the procedure is
+        unavailable or if the returned attributes cannot be interpreted.
+        """
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            candidates = [
+                "org.neo4j:instance=kernel#0,name=Store file sizes",
+                "org.neo4j:instance=kernel#0,name=StoreFileSizes",
+                "org.neo4j:instance=kernel#0,name=Store sizes",
+            ]
+            last_error: Optional[Exception] = None
+            for mbean in candidates:
+                try:
+                    result = session.run(
+                        "CALL dbms.queryJmx($mbean) YIELD attributes RETURN attributes LIMIT 1",
+                        mbean=mbean,
+                    )
+                    rec = result.single()
+                    if not rec:
+                        continue
+                    attrs = rec.get("attributes")
+                    if not isinstance(attrs, dict):
+                        continue
+                    total = 0
+                    found_any = False
+                    for v in attrs.values():
+                        if isinstance(v, (int, float)):
+                            total += int(v)
+                            found_any = True
+                        elif isinstance(v, str):
+                            # Some installations return numbers as strings.
+                            try:
+                                total += int(float(v))
+                                found_any = True
+                            except Exception:
+                                continue
+                    if found_any:
+                        return total
+                except Exception as exc:
+                    last_error = exc
+                    continue
+            if last_error:
+                logger.debug("Neo4j store size JMX query failed: {}", last_error)
+        return None
+
     def delete_document_graph(
         self, document_name: str, *, user_id: Optional[str] = None
     ) -> bool:

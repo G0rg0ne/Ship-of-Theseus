@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     # Redis (optional; in-memory fallback when not set)
     REDIS_URL: Optional[str] = None
 
+    # Admin infra monitoring (optional)
+    # Comma-separated mount points to monitor for disk usage (inside backend container).
+    # Examples:
+    # - Dev (compose volume bind): "/"
+    # - Prod (host-mounted data volume): "/,/data"
+    DISK_MOUNT_PATHS: str = "/"
+    DISK_WARN_PERCENT: int = 80
+    DISK_CRIT_PERCENT: int = 90
+
     # Email (for verification emails; MailHog in dev)
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 1025
@@ -94,6 +103,11 @@ class Settings(BaseSettings):
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "password123"
     NEO4J_DATABASE: str = "neo4j"
+
+    # Optional: filesystem path to Neo4j data directory (for admin store-size metrics).
+    # Example (dev, backend running on host): "./data/neo4j"
+    # Example (Docker, shared volume): "/data/neo4j"
+    NEO4J_DATA_PATH: Optional[str] = None
 
     # GraphRAG: community summarization and embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"

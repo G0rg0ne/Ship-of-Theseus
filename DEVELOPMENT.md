@@ -468,6 +468,27 @@ None.
 
 ---
 
+## [2026-03-13 07:40] - BUGFIX
+
+### Changes
+- Normalised the `ServiceStorageStats.status` field description in the admin schemas to use an ASCII hyphen-minus in the explanatory suffix, avoiding mixed Unicode dash characters in API documentation.
+
+### Files Modified
+- `backend/app/schemas/admin.py`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Mixed Unicode dash characters in status descriptions can cause subtle inconsistencies between code, documentation, and logs; standardising on the ASCII hyphen-minus keeps admin health and infra status strings consistent and easier to search for.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-09] - FEATURE: GraphRAG Brain Pipeline
 
 ### Changes
@@ -1570,5 +1591,140 @@ None. Rule and skill files are AI context only and do not affect runtime behavio
 ### Next Steps
 - Consider adding a `docker.mdc` rule if Docker Compose changes become frequent.
 - The logging cleanup plan (`.cursor/plans/logging_cleanup_4c6e7ca3.plan.md`) is still pending.
+
+---
+
+## [2026-03-13 06:25] - FEATURE
+
+### Changes
+- Extended the admin system endpoint (`GET /api/v1/admin/system`) to return an `infra` block with storage/infra metrics.
+- Added disk usage monitoring for configurable mount paths (used/free/total + warning/critical thresholds).
+- Added PostgreSQL database size metric (`pg_database_size(current_database())`) and Redis memory usage metric (`INFO memory`).
+- Added best-effort Neo4j store size metric via `dbms.queryJmx` when available; falls back gracefully when unsupported.
+- Updated the Next.js admin portal (`/admin`) to display an “Infrastructure & storage” section (volumes + backing service sizes).
+- Added a repo-root `.env.example` template including new disk monitoring variables.
+
+### Files Modified
+- `backend/app/schemas/admin.py`
+- `backend/app/services/admin_service.py`
+- `backend/app/services/infra_metrics_service.py`
+- `backend/app/services/neo4j_service.py`
+- `backend/app/core/config.py`
+- `frontend-next/src/app/admin/page.tsx`
+- `README.md`
+- `.env.example`
+- `DEVELOPMENT.md`
+
+### Rationale
+Hetzner production hosts often have tight disk constraints; adding storage visibility to the admin portal makes it easy to detect unhealthy growth (DB/cache/graph store) before outages.
+
+### Breaking Changes
+None. The admin system response is extended with an optional `infra` field; existing consumers remain compatible.
+
+### Next Steps
+- Consider enabling Neo4j JMX procedures/metrics in production if you want store size to always populate.
+
+---
+
+## [2026-03-13 07:05] - BUGFIX
+
+### Changes
+- Updated Neo4j store size computation in `infra_metrics_service` so that an invalid or unreadable `NEO4J_DATA_PATH` no longer short-circuits the best-effort Neo4j fallback.
+
+### Files Modified
+- `backend/app/services/infra_metrics_service.py`
+- `DEVELOPMENT.md`
+
+### Rationale
+Previously, when `NEO4J_DATA_PATH` was set but pointed to a missing/non-directory path (or when a filesystem scan raised an unexpected error), the helper returned immediately and never attempted `neo4j.get_store_size_bytes()`, weakening the intended “try filesystem, then Neo4j helper” behaviour for admin infra metrics.
+
+### Breaking Changes
+None. Behaviour is strictly more robust; error messages now prefer filesystem details when present but still fall back cleanly to Neo4j-specific reasons.
+
+### Next Steps
+- Consider surfacing the combined filesystem/Neo4j error detail in the admin UI when store size is unavailable, to aid ops debugging.
+
+---
+
+## [2026-03-13 07:20] - BUGFIX
+
+### Changes
+- Fixed `get_disk_volumes` so that explicit `warn_percent` and `crit_percent` arguments take precedence over settings and correctly respect `0` as a valid threshold instead of treating it as falsy via `or`.
+
+### Files Modified
+- `backend/app/services/infra_metrics_service.py`
+- `DEVELOPMENT.md`
+
+### Rationale
+The previous implementation always preferred `DISK_WARN_PERCENT`/`DISK_CRIT_PERCENT` from settings when defined and used `warn_percent or 80`/`crit_percent or 90`, causing passed-in thresholds (especially `0`) to be ignored or overridden unintentionally in admin infra metrics.
+
+### Breaking Changes
+None. Callers that relied on environment defaults are unaffected; callers that explicitly passed thresholds now get the intended behaviour.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-13 08:00] - BUGFIX
+
+### Changes
+- Normalised the `StorageVolume.status` field description in the admin schemas to use a standard ASCII hyphen-minus (`-`) instead of an en-dash in the phrase `critical - based on configured thresholds`, avoiding ambiguous characters when searching or copying text from OpenAPI docs.
+
+### Files Modified
+- `backend/app/schemas/admin.py`
+- `DEVELOPMENT.md`
+
+### Rationale
+The previous description string used an en-dash character (`–`) which could cause subtle issues for search, copy/paste, and tooling that expects ASCII-only punctuation in status descriptions.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-13 09:15] - BUGFIX
+
+### Changes
+- Hardened admin infrastructure disk metrics so invalid or non-numeric `DISK_WARN_PERCENT` / `DISK_CRIT_PERCENT` settings no longer cause a `ValueError`; instead, threshold parsing now falls back to safe defaults and logs a warning.
+- Wrapped disk volume enumeration in `get_infra_metrics` in a `try`/`except` block so failures in `get_disk_volumes()` result in an empty disk volumes list and a logged warning rather than breaking the entire `/admin/system` response.
+
+### Files Modified
+- `backend/app/services/infra_metrics_service.py`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Admin system health reporting is designed to be best-effort; disk threshold misconfiguration or disk enumeration failures should degrade gracefully and still return PostgreSQL/Neo4j/Redis metrics instead of surfacing uncaught exceptions to callers.
+
+### Breaking Changes
+None. The behaviour change is limited to more resilient error handling for disk threshold parsing and enumeration; valid configurations are unaffected.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-13 09:45] - BUGFIX
+
+### Changes
+- Updated Neo4j store size fallback error handling in `infra_metrics_service` so that filesystem scan errors (when `NEO4J_DATA_PATH` is set) are preserved and combined with Neo4j helper exceptions instead of being dropped, and ensured the warning log/returned error share the same combined message.
+
+### Files Modified
+- `backend/app/services/infra_metrics_service.py`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Previously, when `neo4j.get_store_size_bytes()` raised a non-`AttributeError`, the outer exception handler logged a generic message and returned only the Neo4j exception text, discarding any earlier filesystem error context collected while probing `NEO4J_DATA_PATH`, making admin infra store-size failures harder to diagnose.
+
+### Breaking Changes
+None. This is a stricter best-effort error reporting improvement; metrics remain optional and callers already treat `None` store size as a soft failure.
+
+### Next Steps
+- Consider surfacing the combined filesystem/Neo4j store-size error detail directly in the admin UI when store size is unavailable.
 
 ---
