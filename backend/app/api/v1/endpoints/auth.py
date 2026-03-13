@@ -244,10 +244,8 @@ async def resend_verification(
 ) -> MessageResponse:
     """Resend the verification email for the given address."""
     user = await get_user_by_email(db, body.email)
-    if user is None:
+    if user is None or user.email_verified:
         return MessageResponse(message="If an account exists for this email, a verification link was sent.")
-    if user.email_verified:
-        return MessageResponse(message="This email is already verified. You can sign in.")
     raw_token = generate_verification_token()
     token_hash = hash_token(raw_token)
     expires_at = datetime.utcnow() + timedelta(hours=VERIFICATION_TOKEN_EXPIRE_HOURS)
