@@ -674,6 +674,111 @@ class Neo4jService:
                 }
             return out
 
+    def vector_search_entities(
+        self,
+        user_id: str,
+        query_vector: List[float],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Vector similarity search on :Entity nodes. Returns top_k entities for the user.
+
+        Uses entity_embedding_idx. Each result: id, label, entity_type, score.
+        """
+        if not query_vector:
+            return []
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('entity_embedding_idx', $top_k, $query_vector)
+                YIELD node, score
+                WHERE node.user_id = $user_id
+                RETURN node.id AS id, node.label AS label, node.entity_type AS entity_type, score
+                """,
+                query_vector=query_vector,
+                top_k=top_k,
+                user_id=user_id,
+            )
+            return [
+                {
+                    "id": record["id"],
+                    "label": record["label"] or "",
+                    "entity_type": record["entity_type"] or "",
+                    "score": float(record["score"]) if record.get("score") is not None else 0.0,
+                }
+                for record in result
+            ]
+
+    def vector_search_communities(
+        self,
+        user_id: str,
+        query_vector: List[float],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Vector similarity search on :Community nodes (root and mid level only).
+
+        Uses community_summary_embedding_idx. Each result: community_id, summary, level, keywords_json, score.
+        """
+        if not query_vector:
+            return []
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('community_summary_embedding_idx', $top_k, $query_vector)
+                YIELD node, score
+                WHERE node.derived_user_id = $user_id AND node.level IN ['root', 'mid']
+                RETURN node.community_id AS community_id, node.summary AS summary,
+                       node.level AS level, node.keywords_json AS keywords_json, score
+                """,
+                query_vector=query_vector,
+                top_k=top_k,
+                user_id=user_id,
+            )
+            return [
+                {
+                    "community_id": record["community_id"] or "",
+                    "summary": record["summary"] or "",
+                    "level": record["level"] or "",
+                    "keywords_json": record["keywords_json"] or "[]",
+                    "score": float(record["score"]) if record.get("score") is not None else 0.0,
+                }
+                for record in result
+            ]
+
+    def get_entity_neighborhood(
+        self,
+        entity_ids: List[str],
+        user_id: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        For the given entity IDs, return 1-hop RELATES triplets: (source_label, relation_type, target_label, target_entity_type).
+        """
+        if not entity_ids:
+            return []
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                MATCH (e:Entity)-[r:RELATES]->(t:Entity)
+                WHERE e.id IN $entity_ids AND e.user_id = $user_id AND t.user_id = $user_id
+                RETURN e.label AS source_label, r.type AS relation_type, t.label AS target_label, t.entity_type AS target_entity_type
+                """,
+                entity_ids=entity_ids,
+                user_id=user_id,
+            )
+            return [
+                {
+                    "source_label": record["source_label"] or "",
+                    "relation_type": record["relation_type"] or "",
+                    "target_label": record["target_label"] or "",
+                    "target_entity_type": record["target_entity_type"] or "",
+                }
+                for record in result
+            ]
+
     def save_community_nodes(
         self,
         user_id: str,

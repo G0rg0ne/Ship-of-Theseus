@@ -113,6 +113,17 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     COMMUNITY_SUMMARIZATION_MODEL: str = "gpt-4o-mini"
 
+    # GraphRAG query pipeline (router, retrieval, synthesis)
+    QUERY_ROUTER_MODEL: str = "gpt-4o-mini"
+    QUERY_SYNTHESIS_MODEL: str = "gpt-4o-mini"
+    QUERY_ENTITY_TOP_K: int = 15
+    QUERY_COMMUNITY_TOP_K: int = 10
+    QUERY_SIMILARITY_THRESHOLD: float = 0.7
+    CHAT_HISTORY_TTL_SECONDS: int = 86400  # 24h
+    CHAT_HISTORY_WINDOW: int = 6  # max conversation turns to send to synthesis (3 human + 3 AI)
+    QUERY_MAX_SUMMARY_CHARS: int = 800  # max chars per community summary in synthesis context
+    QUERY_ANSWER_CACHE_TTL: int = 3600  # TTL in seconds for cached query answers (1 hour)
+
     class Config:
         case_sensitive = True
         env_file = ".env"

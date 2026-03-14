@@ -257,6 +257,16 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
   - `EMBEDDING_MODEL` - OpenAI embedding model (default: `text-embedding-3-small`). Neo4j vector index dimensions are derived from this model at runtime so index configuration always matches the active embedding model.
   - `COMMUNITY_SUMMARIZATION_MODEL` - LLM for community reports (default: `gpt-4o-mini`)
   - `COMMUNITY_SUMMARIZATION_CONCURRENCY` - Max concurrent community-summary LLM calls per hierarchy level (default: `50`). Tune down if you hit rate limits; tune up for faster summarization.
+- **GraphRAG query pipeline (router, retrieval, synthesis):**
+  - `QUERY_ROUTER_MODEL` - LLM for intent classification (default: `gpt-4o-mini`)
+  - `QUERY_SYNTHESIS_MODEL` - LLM for final answer synthesis (default: `gpt-4o-mini`)
+  - `QUERY_ENTITY_TOP_K` - Max entities from vector search (default: `15`)
+  - `QUERY_COMMUNITY_TOP_K` - Max communities from vector search (default: `10`)
+  - `QUERY_SIMILARITY_THRESHOLD` - Min cosine score to keep context (default: `0.7`)
+  - `QUERY_MAX_SUMMARY_CHARS` - Max characters per community summary in synthesis context (default: `800`); reduces token usage.
+  - `QUERY_ANSWER_CACHE_TTL` - TTL in seconds for cached query answers (default: `3600`, 1 hour); repeated identical questions return instantly.
+  - `CHAT_HISTORY_TTL_SECONDS` - Redis TTL for chat history (default: `86400`, 24h)
+  - `CHAT_HISTORY_WINDOW` - Max conversation turns (human + AI pairs) sent to synthesis (default: `6`); limits token growth in long chats.
 
 ## 📡 API Endpoints
 
@@ -302,6 +312,9 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 - `GET /community/brain` - Get current user's knowledge brain (includes `communities_by_level` with summaries when full pipeline has run; cache: Redis → Neo4j Brain node → recompute fallback; requires auth). Returns **200** with an empty brain (`status="empty"`, zeros) when the user has no graph yet. The dashboard **Refresh** button uses this read-only endpoint to update what is shown to the user.
 - `POST /community/detect` - Run full GraphRAG pipeline: hierarchical detection (Leaf → Mid → Root), LLM summarization per community, entity and summary embedding (text-embedding-3-small), persist to Neo4j (assignments, community nodes, vector indexes); returns enriched brain (requires auth). This endpoint is available for manual or programmatic re-computation but is no longer called from the main dashboard UI.
 - `DELETE /community/brain` - Permanently delete the user's brain, community nodes, and all document graphs from Neo4j; clear Redis cache (requires auth)
+
+### GraphRAG Query Endpoint (chat with your brain)
+- `POST /query` - Run a question through the 4-stage GraphRAG pipeline (intent router → vector search on communities/entities → context pruning → LLM synthesis). Body: `{ "question": string, "mode"?: "auto"|"global"|"local"|"hybrid", "session_id"?: string, "stream"?: boolean }`. With `stream: false` (default): returns JSON `{ "answer", "mode_used", "session_id", "sources": [{ "type", "id", "level"?, "excerpt"?, "label"? }] }`. With `stream: true`: response is `text/event-stream`; each SSE `data:` line is JSON—`{ "content": "..." }` for token chunks, then `{ "done": true, "answer", "mode_used", "session_id", "sources" }`. Conversation history is persisted per session in Redis (TTL 24h); only the last `CHAT_HISTORY_WINDOW` turns are sent to the LLM. Repeated identical questions may be served from answer cache. Requires auth.
 
 ### Admin Endpoints (require admin user; 403 if not admin)
 - `GET {API_V1_PREFIX}/admin/stats` - Platform statistics: total/active/new (7d) users, total documents, entities, relationships, communities, avg docs per user

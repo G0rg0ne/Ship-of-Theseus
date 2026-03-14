@@ -249,6 +249,46 @@ export async function deleteUserBrain(token: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// GraphRAG query (chat with your brain)
+// ---------------------------------------------------------------------------
+
+export interface SourceAttribution {
+  type: "community" | "entity";
+  id: string;
+  level?: string;
+  excerpt?: string;
+  label?: string;
+}
+
+export interface QueryResponse {
+  answer: string;
+  mode_used: string;
+  session_id: string;
+  sources: SourceAttribution[];
+}
+
+export type QueryMode = "auto" | "global" | "local" | "hybrid";
+
+export async function queryBrain(
+  question: string,
+  token: string,
+  options?: { mode?: QueryMode; sessionId?: string | null }
+): Promise<QueryResponse> {
+  const body: { question: string; mode?: QueryMode; session_id?: string } = {
+    question: question.trim(),
+  };
+  if (options?.mode) body.mode = options.mode;
+  if (options?.sessionId) body.session_id = options.sessionId;
+  const res = await fetch(getBaseUrl() + "/api/query", {
+    ...defaultFetchOpts,
+    method: "POST",
+    headers: getHeaders(token),
+    body: JSON.stringify(body),
+  });
+  return handleResponse<QueryResponse>(res);
+}
+
+// ---------------------------------------------------------------------------
 // Admin API (requires admin user)
 // ---------------------------------------------------------------------------
 

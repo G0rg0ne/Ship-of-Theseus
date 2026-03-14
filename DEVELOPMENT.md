@@ -1,5 +1,74 @@
 # Development log
 
+## [2026-03-14] - FEATURE: Chatbot token and speed optimizations
+
+### Changes
+- **History windowing:** Added `CHAT_HISTORY_WINDOW` (default 6). Only the last N conversation turns are sent to the synthesis LLM. When saving to Redis, human turns store only the bare question (not the full context block). Legacy history entries with "Context:... Question: ..." are stripped to the question part when loaded for token savings.
+- **Summary cap:** Added `QUERY_MAX_SUMMARY_CHARS` (default 800). Community summaries in synthesis context are truncated to this length before being sent to the LLM.
+- **Answer cache:** Added `QUERY_ANSWER_CACHE_TTL` (default 3600) and Redis cache key `query:answer:{user_id}:{question_hash}`. Identical questions return the cached response and skip the full pipeline; the Q&A is still appended to chat history.
+- **Streaming:** Synthesis step now supports streaming. `POST /api/query` accepts `stream: true` in the body; response is `text/event-stream` with SSE events: `{ "content": "..." }` per token chunk, then `{ "done": true, "answer", "mode_used", "session_id", "sources" }`. Non-streaming behavior unchanged when `stream` is omitted or false.
+- **Frontend:** ChatSection uses streaming by default: sends `stream: true`, consumes the SSE response, and appends tokens to the assistant message as they arrive. Shows "Thinking…" in the assistant bubble until the first token.
+
+### Files Modified
+- `backend/app/core/config.py` (CHAT_HISTORY_WINDOW, QUERY_MAX_SUMMARY_CHARS, QUERY_ANSWER_CACHE_TTL)
+- `backend/app/core/cache.py` (cache_key_query_answer)
+- `backend/app/services/query_service.py` (_human_content_to_question, history trim, summary truncation, answer cache, run_query_pipeline_stream)
+- `backend/app/api/v1/endpoints/query.py` (stream query param, StreamingResponse)
+- `backend/app/schemas/query.py` (stream field on QueryRequest)
+- `frontend-next/src/components/chat/ChatSection.tsx` (streaming fetch, SSE parsing, incremental message update)
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Chat felt slow due to unbounded history and large context. Windowing and summary truncation cut token usage; streaming improves perceived latency; answer cache makes repeated questions instant.
+
+### Breaking Changes
+None. Existing clients that do not send `stream: true` receive the same JSON response as before.
+
+### Next Steps
+If the project uses `.env.example`, add the new variables: `CHAT_HISTORY_WINDOW`, `QUERY_MAX_SUMMARY_CHARS`, `QUERY_ANSWER_CACHE_TTL`.
+
+---
+
+## [2026-03-13] - FEATURE: GraphRAG Query Pipeline (chat with your brain)
+
+### Changes
+- **Backend:** Implemented full 4-stage GraphRAG query pipeline: (1) Intent Router (LLM classifies query as global/local/hybrid), (2) Retrieval via Neo4j vector search on `entity_embedding_idx` and `community_summary_embedding_idx` plus 1-hop entity neighborhood, (3) Context pruning (score threshold, deduplication), (4) LLM synthesis with conversation history. Conversation history is stored in Redis per user/session and loaded each request for multi-turn answers.
+- **Neo4j:** Added `vector_search_entities`, `vector_search_communities`, and `get_entity_neighborhood` to `neo4j_service.py`.
+- **API:** New `POST /api/query` endpoint; request body `question`, optional `mode` (auto|global|local|hybrid), optional `session_id`; response includes `answer`, `mode_used`, `session_id`, `sources` (community/entity attribution).
+- **Prompts:** Added `query_router.json` (few-shot intent classifier) and `query_synthesis.json` (answer + cite sources).
+- **Config:** Added `QUERY_ROUTER_MODEL`, `QUERY_SYNTHESIS_MODEL`, `QUERY_ENTITY_TOP_K`, `QUERY_COMMUNITY_TOP_K`, `QUERY_SIMILARITY_THRESHOLD`, `CHAT_HISTORY_TTL_SECONDS`.
+- **Frontend:** Wired `ChatSection` to `queryBrain()` API; messages state, loading indicator, session ID in localStorage, message bubbles and source attribution pills below assistant replies. Dashboard passes `token` to `ChatSection`.
+- **Cache:** Added `cache_key_chat_history(user_id, session_id)` and Redis persistence for chat history.
+
+### Files Modified
+- `backend/app/schemas/query.py` (new)
+- `backend/app/services/neo4j_service.py`
+- `backend/app/services/query_service.py` (new)
+- `backend/app/api/v1/endpoints/query.py` (new)
+- `backend/app/core/config.py`
+- `backend/app/core/cache.py`
+- `backend/app/main.py`
+- `backend/app/prompts/query_router.json` (new)
+- `backend/app/prompts/query_synthesis.json` (new)
+- `frontend-next/src/lib/api.ts` (queryBrain, QueryResponse, SourceAttribution, QueryMode)
+- `frontend-next/src/components/chat/ChatSection.tsx`
+- `frontend-next/src/app/dashboard/page.tsx`
+- `backend/requirements.txt` (added `langchain-core>=0.3.0` for query service)
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Users need to ask questions against their knowledge graph and get answers grounded in community summaries and entity triplets, with conversation context and source attribution. The router avoids over-fetching (e.g. global questions use only community summaries).
+
+### Breaking Changes
+None. New endpoint and optional frontend token prop.
+
+### Next Steps
+Optional: add tests for query pipeline and `POST /api/query` endpoint. `langchain-core` was added to `backend/requirements.txt` for `InMemoryChatMessageHistory` and message types used by the query service.
+
+---
+
 ## [2026-03-13 16:20] - DOCS: Clarify email verification endpoints
 
 ### Changes

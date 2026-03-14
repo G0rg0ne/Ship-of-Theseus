@@ -1,0 +1,11 @@
+{
+  "name": "query_router",
+  "description": "Classify user query intent for GraphRAG: global (thematic), local (entity/fact), or hybrid",
+  "version": "1.0",
+  "template": "You are a router for a knowledge-graph Q&A system. Given a user question, decide the search depth and optionally extract entity names mentioned.\n\nOutput a JSON object with exactly two keys:\n- \"category\": one of \"global\", \"local\", \"hybrid\"\n- \"extracted_entities\": a list of entity names or key terms mentioned in the question (e.g. person names, organizations, products). Use empty list [] if none or if the question is high-level.\n\n\"global\" = thematic / high-level (e.g. \"What are the main themes?\", \"Summarize the document\", \"What is the overall budget?\")\n\"local\" = specific fact or entity (e.g. \"What are the specs of the XYZ engine?\", \"Who is John Smith?\")\n\"hybrid\" = mix (e.g. \"How does the budget relate to project Alpha?\")\n\nExamples:\n\nQuestion: What are the core themes of this document?\nOutput: {{\"category\": \"global\", \"extracted_entities\": []}}\n\nQuestion: What are the specs of the XYZ engine?\nOutput: {{\"category\": \"local\", \"extracted_entities\": [\"XYZ engine\"]}}\n\nQuestion: What is the total budget?\nOutput: {{\"category\": \"global\", \"extracted_entities\": []}}\n\nQuestion: How does the Budget Committee relate to Project Alpha?\nOutput: {{\"category\": \"hybrid\", \"extracted_entities\": [\"Budget Committee\", \"Project Alpha\"]}}\n\nUser question:\n{query}\n\nOutput JSON only, no other text:",
+  "input_variables": ["query"],
+  "metadata": {
+    "model_suggested": "gpt-4o-mini",
+    "temperature": 0
+  }
+}
