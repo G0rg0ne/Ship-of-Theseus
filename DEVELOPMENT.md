@@ -1,5 +1,28 @@
 # Development log
 
+## [2026-03-14] - REFACTOR: Align chat message roles (user | assistant) with frontend
+
+### Changes
+- **Backend:** `ChatMessage.role` in `app/schemas/query.py` now uses `Literal["user", "assistant"]` instead of `"human" | "ai"`, aligned with the frontend `ChatSection` interface. Redis-stored history and all new writes use `"user"` and `"assistant"`. When reading from Redis, the query service accepts both legacy `"human"`/`"ai"` and `"user"`/`"assistant"` for backward compatibility.
+- **Docstring:** `ChatMessage` documents that role values are aligned with the frontend so chat history can be shared or exposed via API without mapping.
+
+### Files Modified
+- `backend/app/schemas/query.py` (Literal type, docstring)
+- `backend/app/services/query_service.py` (write "user"/"assistant", read "human"/"user" and "ai"/"assistant")
+- `README.md` (CHAT_HISTORY_WINDOW note)
+- `DEVELOPMENT.md`
+
+### Rationale
+Frontend uses "user" | "assistant"; backend previously used "human" | "ai". Aligning on "user" | "assistant" avoids mismatch when chat history is shared or exposed to the frontend and keeps a single vocabulary across the stack.
+
+### Breaking Changes
+None. Existing Redis entries with "human"/"ai" are still read correctly; new entries use "user"/"assistant".
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - FEATURE: Chatbot token and speed optimizations
 
 ### Changes

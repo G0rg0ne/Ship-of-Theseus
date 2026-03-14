@@ -156,8 +156,8 @@ async def run_query_pipeline(
             cache_key = cache_key_chat_history(user_id, session_id)
             raw_history = await cache_get(cache_key)
             history_list = list(raw_history) if isinstance(raw_history, list) else []
-            history_list.append({"role": "human", "content": question})
-            history_list.append({"role": "ai", "content": response.answer})
+            history_list.append({"role": "user", "content": question})
+            history_list.append({"role": "assistant", "content": response.answer})
             await cache_set(cache_key, history_list[-(history_window * 2) :], ttl_seconds=ttl)
             return response
         except Exception:
@@ -238,11 +238,11 @@ async def run_query_pipeline(
                 continue
             role = (item.get("role") or "").lower()
             content = item.get("content") or ""
-            if role == "human":
+            if role in ("human", "user"):
                 # Strip legacy "Context:... Question: ..." to just the question for token savings
                 content = _human_content_to_question(content)
                 history_messages.append(HumanMessage(content=content))
-            elif role == "ai":
+            elif role in ("ai", "assistant"):
                 history_messages.append(AIMessage(content=content))
         # Keep only the last N turns to cap token usage
         history_messages = history_messages[-history_window:]
@@ -274,7 +274,7 @@ async def run_query_pipeline(
     history.add_message(AIMessage(content=answer))
     to_save = []
     for m in history.messages:
-        role = "human" if getattr(m, "type", None) == "human" else "ai"
+        role = "user" if getattr(m, "type", None) == "human" else "assistant"
         content = getattr(m, "content", str(m))
         to_save.append({"role": role, "content": content})
     await cache_set(cache_key, to_save, ttl_seconds=ttl)
@@ -326,8 +326,8 @@ async def run_query_pipeline_stream(
             cache_key = cache_key_chat_history(user_id, session_id)
             raw_history = await cache_get(cache_key)
             history_list = list(raw_history) if isinstance(raw_history, list) else []
-            history_list.append({"role": "human", "content": question})
-            history_list.append({"role": "ai", "content": response.answer})
+            history_list.append({"role": "user", "content": question})
+            history_list.append({"role": "assistant", "content": response.answer})
             await cache_set(cache_key, history_list[-(history_window * 2) :], ttl_seconds=ttl)
             yield {
                 "type": "done",
@@ -410,10 +410,10 @@ async def run_query_pipeline_stream(
                 continue
             role = (item.get("role") or "").lower()
             content = item.get("content") or ""
-            if role == "human":
+            if role in ("human", "user"):
                 content = _human_content_to_question(content)
                 history_messages.append(HumanMessage(content=content))
-            elif role == "ai":
+            elif role in ("ai", "assistant"):
                 history_messages.append(AIMessage(content=content))
         history_messages = history_messages[-history_window:]
 
@@ -449,7 +449,7 @@ async def run_query_pipeline_stream(
     history.add_message(AIMessage(content=answer))
     to_save = []
     for m in history.messages:
-        role = "human" if getattr(m, "type", None) == "human" else "ai"
+        role = "user" if getattr(m, "type", None) == "human" else "assistant"
         content = getattr(m, "content", str(m))
         to_save.append({"role": role, "content": content})
     await cache_set(cache_key, to_save, ttl_seconds=ttl)

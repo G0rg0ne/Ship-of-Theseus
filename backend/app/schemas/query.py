@@ -2,7 +2,7 @@
 Pydantic schemas for GraphRAG query pipeline (request, response, sources).
 """
 from enum import Enum
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -45,7 +45,11 @@ class QueryResponse(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    """A single message in conversation history (for Redis serialization)."""
+    """A single message in conversation history (Redis serialization / API).
 
-    role: str  # "human" | "ai"
+    Role values are aligned with the frontend (ChatSection: user | assistant)
+    so that chat history can be shared or exposed via API without mapping.
+    """
+
+    role: Literal["user", "assistant"]
     content: str
