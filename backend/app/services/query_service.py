@@ -26,6 +26,11 @@ from app.core.prompt_manager import PromptManager
 from app.schemas.query import QueryResponse, SourceAttribution
 
 
+def _trim_messages(items: List[Any], max_n: int) -> List[Any]:
+    """Return the last max_n items; if max_n <= 0 return [] (avoids unbounded history when CHAT_HISTORY_WINDOW is 0)."""
+    return items[-max_n:] if max_n > 0 else []
+
+
 def _human_content_to_question(content: str) -> str:
     """If content is legacy 'Context:... Question: ...' format, return only the question part."""
     if not content or "Question:" not in content:
@@ -138,14 +143,14 @@ async def run_query_pipeline(
     threshold = getattr(settings, "QUERY_SIMILARITY_THRESHOLD", 0.7)
     ttl = getattr(settings, "CHAT_HISTORY_TTL_SECONDS", 86400)
     history_window = getattr(settings, "CHAT_HISTORY_WINDOW", 6)
-    max_messages = history_window * 2  # turns = user+assistant pairs
+    max_messages = max(0, int(history_window) * 2)  # turns = user+assistant pairs; 0 => no history
     answer_cache_ttl = getattr(settings, "QUERY_ANSWER_CACHE_TTL", 3600)
 
     # Load history once for cache fingerprint and later synthesis
     cache_key = cache_key_chat_history(user_id, session_id)
     raw_history = await cache_get(cache_key)
     history_list = list(raw_history) if isinstance(raw_history, list) else []
-    history_snapshot = history_list[-max_messages:] if max_messages > 0 else []
+    history_snapshot = _trim_messages(history_list, max_messages)
     history_hash = hashlib.sha256(
         json.dumps(history_snapshot, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -168,7 +173,7 @@ async def run_query_pipeline(
             history_list = list(raw_history) if isinstance(raw_history, list) else []
             history_list.append({"role": "user", "content": question})
             history_list.append({"role": "assistant", "content": response.answer})
-            await cache_set(cache_key, history_list[-(history_window * 2) :], ttl_seconds=ttl)
+            await cache_set(cache_key, _trim_messages(history_list, max_messages), ttl_seconds=ttl)
             return response
         except Exception as e:
             logger.opt(exception=True).debug(
@@ -259,7 +264,7 @@ async def run_query_pipeline(
             elif role in ("ai", "assistant"):
                 history_messages.append(AIMessage(content=content))
         # Keep only the last N turns to cap token usage (each turn = 2 messages)
-        history_messages = history_messages[-max_messages:]
+        history_messages = _trim_messages(history_messages, max_messages)
 
     synthesis_prompt_data = PromptManager.get_prompt("query_synthesis")
     system_text = synthesis_prompt_data.get("system") or "Answer using only the provided context. Cite sources."
@@ -291,7 +296,7 @@ async def run_query_pipeline(
         role = "user" if getattr(m, "type", None) == "human" else "assistant"
         content = getattr(m, "content", str(m))
         to_save.append({"role": role, "content": content})
-    await cache_set(cache_key, to_save[-max_messages:], ttl_seconds=ttl)
+    await cache_set(cache_key, _trim_messages(to_save, max_messages), ttl_seconds=ttl)
 
     response = QueryResponse(
         answer=answer.strip(),
@@ -324,14 +329,14 @@ async def run_query_pipeline_stream(
     threshold = getattr(settings, "QUERY_SIMILARITY_THRESHOLD", 0.7)
     ttl = getattr(settings, "CHAT_HISTORY_TTL_SECONDS", 86400)
     history_window = getattr(settings, "CHAT_HISTORY_WINDOW", 6)
-    max_messages = history_window * 2  # turns = user+assistant pairs
+    max_messages = max(0, int(history_window) * 2)  # turns = user+assistant pairs; 0 => no history
     answer_cache_ttl = getattr(settings, "QUERY_ANSWER_CACHE_TTL", 3600)
 
     # Load history once for cache fingerprint and later synthesis
     cache_key = cache_key_chat_history(user_id, session_id)
     raw_history = await cache_get(cache_key)
     history_list = list(raw_history) if isinstance(raw_history, list) else []
-    history_snapshot = history_list[-max_messages:] if max_messages > 0 else []
+    history_snapshot = _trim_messages(history_list, max_messages)
     history_hash = hashlib.sha256(
         json.dumps(history_snapshot, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -352,7 +357,7 @@ async def run_query_pipeline_stream(
             history_list = list(raw_history) if isinstance(raw_history, list) else []
             history_list.append({"role": "user", "content": question})
             history_list.append({"role": "assistant", "content": response.answer})
-            await cache_set(cache_key, history_list[-(history_window * 2) :], ttl_seconds=ttl)
+            await cache_set(cache_key, _trim_messages(history_list, max_messages), ttl_seconds=ttl)
             yield {
                 "type": "done",
                 "answer": response.answer,
@@ -446,7 +451,7 @@ async def run_query_pipeline_stream(
             elif role in ("ai", "assistant"):
                 history_messages.append(AIMessage(content=content))
         # Keep only the last N turns to cap token usage (each turn = 2 messages)
-        history_messages = history_messages[-max_messages:]
+        history_messages = _trim_messages(history_messages, max_messages)
 
     synthesis_prompt_data = PromptManager.get_prompt("query_synthesis")
     system_text = synthesis_prompt_data.get("system") or "Answer using only the provided context. Cite sources."
@@ -483,7 +488,7 @@ async def run_query_pipeline_stream(
         role = "user" if getattr(m, "type", None) == "human" else "assistant"
         content = getattr(m, "content", str(m))
         to_save.append({"role": role, "content": content})
-    await cache_set(cache_key, to_save[-max_messages:], ttl_seconds=ttl)
+    await cache_set(cache_key, _trim_messages(to_save, max_messages), ttl_seconds=ttl)
 
     response = QueryResponse(
         answer=answer,

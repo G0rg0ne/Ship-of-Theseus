@@ -1,5 +1,24 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Prevent unbounded history when CHAT_HISTORY_WINDOW is zero/invalid
+
+### Changes
+- **query_service:** When `CHAT_HISTORY_WINDOW` is 0 or invalid, `[-max_messages:]` with `max_messages == 0` returns the full list in Python, silently disabling trimming and bloating Redis/prompt payloads. Introduced `max_messages = max(0, int(history_window) * 2)` and a module-level `_trim_messages(items, max_n)` that returns `items[-max_n:]` when `max_n > 0` else `[]`. All history slices (cache fingerprint snapshot, cache-hit save, synthesis history, final save) now use `_trim_messages(...)` so zero/negative window yields empty history.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Python slice `list[-0:]` is equivalent to `list[:]`, so a zero window did not trim; fixing this ensures `CHAT_HISTORY_WINDOW=0` correctly disables conversation history.
+
+### Breaking Changes
+None. `CHAT_HISTORY_WINDOW=0` now behaves as documented (no history).
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - BUGFIX: Guard top_k before vector-index calls in neo4j_service
 
 ### Changes

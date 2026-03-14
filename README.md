@@ -266,7 +266,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
   - `QUERY_MAX_SUMMARY_CHARS` - Max characters per community summary in synthesis context (default: `800`); reduces token usage.
   - `QUERY_ANSWER_CACHE_TTL` - TTL in seconds for cached query answers (default: `3600`, 1 hour); repeated identical questions return instantly.
   - `CHAT_HISTORY_TTL_SECONDS` - Redis TTL for chat history (default: `86400`, 24h)
-  - `CHAT_HISTORY_WINDOW` - Max conversation turns (user + assistant pairs) sent to synthesis (default: `6`); limits token growth in long chats. Chat message roles in Redis/API are `user` | `assistant` (aligned with frontend).
+  - `CHAT_HISTORY_WINDOW` - Max conversation turns (user + assistant pairs) sent to synthesis (default: `6`); limits token growth in long chats. Use `0` to disable history (empty context). Chat message roles in Redis/API are `user` | `assistant` (aligned with frontend).
 
 ## 📡 API Endpoints
 
