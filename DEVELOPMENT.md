@@ -1,5 +1,24 @@
 # Development log
 
+## [2026-03-14] - REFACTOR: Use asyncio.get_running_loop() in query_service async paths
+
+### Changes
+- Replaced `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in `query_service.py` for all executor usage. In the first router-invoke block the loop variable was removed and `asyncio.get_running_loop().run_in_executor(...)` is used inline; in the two places where the loop is reused for multiple `run_in_executor` calls, `loop = asyncio.get_running_loop()` is used so subsequent calls stay correct.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+In Python 3.10+, `get_event_loop()` inside an async context is deprecated; `get_running_loop()` returns the currently running loop without fallback behavior and is the recommended API.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - BUGFIX: Log cache parse failures in query service instead of swallowing
 
 ### Changes

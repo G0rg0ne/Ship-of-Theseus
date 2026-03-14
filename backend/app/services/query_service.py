@@ -182,8 +182,7 @@ async def run_query_pipeline(
             openai_api_key=settings.OPENAI_API_KEY or "",
         )
         router_chain = router_prompt | router_llm
-        loop = asyncio.get_event_loop()
-        router_result = await loop.run_in_executor(
+        router_result = await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: router_chain.invoke({"query": question}),
         )
@@ -195,7 +194,7 @@ async def run_query_pipeline(
     mode_used = category
 
     # --- 2. Embed query and run retrieval ---
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     query_vectors = await loop.run_in_executor(
         None,
         lambda: embedding_service.embed_texts([question]),
@@ -344,7 +343,7 @@ async def run_query_pipeline_stream(
                 "Cache hit parse failed (streaming), running full pipeline: {}", e
             )
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     if mode == "auto":
         router_prompt_data = PromptManager.get_prompt("query_router")
         router_template = router_prompt_data["template"]
