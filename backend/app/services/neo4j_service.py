@@ -92,7 +92,11 @@ class Neo4jService:
             return False
 
     def _ensure_indexes(self, session: Any) -> None:
-        """Create indexes per label for document_name and (document_name, id) if they do not exist."""
+        """Create indexes per label for document_name and (document_name, id) if they do not exist.
+        Also creates a composite index on :Entity (user_id, document_name, id) for neighborhood lookups."""
+        session.run(
+            "CREATE INDEX entity_scope_idx IF NOT EXISTS FOR (n:Entity) ON (n.user_id, n.document_name, n.id)"
+        )
         for label in ("Person", "Organization", "Location", "KeyTerm"):
             session.run(
                 f"CREATE INDEX document_name_{label}_idx IF NOT EXISTS FOR (n:{label}) ON (n.document_name)"

@@ -1,5 +1,24 @@
 # Development log
 
+## [2026-03-14] - CONFIG: Composite index for :Entity neighborhood lookups
+
+### Changes
+- **neo4j_service:** In `_ensure_indexes()`, added a composite b-tree index on `:Entity` for `(user_id, document_name, id)`. `get_entity_neighborhood()` matches `(e:Entity)` by this tuple on the request hot path; without the index Neo4j falls back to a label scan as the graph grows. Index creation uses `CREATE INDEX entity_scope_idx IF NOT EXISTS FOR (n:Entity) ON (n.user_id, n.document_name, n.id)` and runs before the existing Person/Organization/Location/KeyTerm indexes.
+
+### Files Modified
+- `backend/app/services/neo4j_service.py`
+
+### Rationale
+Neighborhood expansion uses the composite key (user_id, document_name, id) to scope Entity lookups. Existing indexes were only on :Person, :Organization, :Location, :KeyTerm (document_name and document_name+id); they do not apply to a generic :Entity match, so adding the Entity composite index allows the planner to use it for the MATCH in get_entity_neighborhood().
+
+### Breaking Changes
+None. Index is created if not exists; no migration script required.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - BUGFIX: Prevent unbounded history when CHAT_HISTORY_WINDOW is zero/invalid
 
 ### Changes
