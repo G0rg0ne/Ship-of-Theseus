@@ -1,5 +1,24 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Filter entity hits by QUERY_SIMILARITY_THRESHOLD before neighborhood expansion
+
+### Changes
+- **query_service:** In both the sync and streaming query pipelines, entity hits from `vector_search_entities` are now filtered by `score >= QUERY_SIMILARITY_THRESHOLD` before building `entity_keys` and calling `get_entity_neighborhood`. Previously the threshold was only applied later to communities, so low-score entity matches were still expanded into triplets and could dominate the local/hybrid prompt. A new `filtered_entities` list is used for expansion and passed as `entities_for_context` into `_build_context_and_sources` so context and sources only include above-threshold entities.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Noisy or low-similarity entity matches were being expanded into full neighborhoods, adding irrelevant triplets to the synthesis context. Applying the same similarity threshold to entities before expansion keeps the prompt focused on high-signal matches and aligns entity pruning with community pruning.
+
+### Breaking Changes
+None. Same threshold and behavior for communities; entities now use it earlier in the pipeline.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - FEATURE: Include vector-search entity hits in context and sources
 
 ### Changes

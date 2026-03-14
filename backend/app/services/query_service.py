@@ -256,6 +256,7 @@ async def run_query_pipeline(
                 user_id, query_vector, community_top_k
             ),
         )
+    entities_for_context: List[Dict[str, Any]] = []
     if category in ("local", "hybrid"):
         entities = await loop.run_in_executor(
             None,
@@ -263,10 +264,12 @@ async def run_query_pipeline(
                 user_id, query_vector, entity_top_k
             ),
         )
-        if entities:
+        filtered_entities = [e for e in entities if e.get("score", 0) >= threshold]
+        entities_for_context = filtered_entities
+        if filtered_entities:
             entity_keys = [
                 {"user_id": e["user_id"], "document_name": e["document_name"], "id": e["id"]}
-                for e in entities
+                for e in filtered_entities
                 if e.get("id") and e.get("user_id") is not None and e.get("document_name") is not None
             ]
             if entity_keys:
@@ -277,7 +280,7 @@ async def run_query_pipeline(
 
     # --- 3. Context pruning and source list ---
     context, sources = _build_context_and_sources(
-        communities, triplets, threshold, entities=entities
+        communities, triplets, threshold, entities=entities_for_context
     )
 
     # --- 4. Prepare for synthesis (history already loaded for cache fingerprint) ---
@@ -447,6 +450,7 @@ async def run_query_pipeline_stream(
                 user_id, query_vector, community_top_k
             ),
         )
+    entities_for_context: List[Dict[str, Any]] = []
     if category in ("local", "hybrid"):
         entities = await loop.run_in_executor(
             None,
@@ -454,10 +458,12 @@ async def run_query_pipeline_stream(
                 user_id, query_vector, entity_top_k
             ),
         )
-        if entities:
+        filtered_entities = [e for e in entities if e.get("score", 0) >= threshold]
+        entities_for_context = filtered_entities
+        if filtered_entities:
             entity_keys = [
                 {"user_id": e["user_id"], "document_name": e["document_name"], "id": e["id"]}
-                for e in entities
+                for e in filtered_entities
                 if e.get("id") and e.get("user_id") is not None and e.get("document_name") is not None
             ]
             if entity_keys:
@@ -467,7 +473,7 @@ async def run_query_pipeline_stream(
                 )
 
     context, sources = _build_context_and_sources(
-        communities, triplets, threshold, entities=entities
+        communities, triplets, threshold, entities=entities_for_context
     )
 
     # History already loaded for cache fingerprint; reuse for synthesis
