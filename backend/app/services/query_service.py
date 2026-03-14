@@ -141,7 +141,8 @@ async def run_query_pipeline(
     answer_cache_ttl = getattr(settings, "QUERY_ANSWER_CACHE_TTL", 3600)
 
     # --- 0. Answer cache (skip pipeline for repeated identical questions) ---
-    question_hash = hashlib.md5(question.encode()).hexdigest()
+    cache_fingerprint = f"{mode}|{session_id or ''}|{question}".encode("utf-8")
+    question_hash = hashlib.sha256(cache_fingerprint).hexdigest()
     answer_cache_key = cache_key_query_answer(user_id, question_hash)
     cached_response = await cache_get(answer_cache_key)
     if isinstance(cached_response, dict):
@@ -318,7 +319,8 @@ async def run_query_pipeline_stream(
     history_window = getattr(settings, "CHAT_HISTORY_WINDOW", 6)
     answer_cache_ttl = getattr(settings, "QUERY_ANSWER_CACHE_TTL", 3600)
 
-    question_hash = hashlib.md5(question.encode()).hexdigest()
+    cache_fingerprint = f"{mode}|{session_id or ''}|{question}".encode("utf-8")
+    question_hash = hashlib.sha256(cache_fingerprint).hexdigest()
     answer_cache_key = cache_key_query_answer(user_id, question_hash)
     cached_response = await cache_get(answer_cache_key)
     if isinstance(cached_response, dict):

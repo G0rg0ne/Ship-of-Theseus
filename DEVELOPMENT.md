@@ -1,5 +1,24 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Include mode and session_id in query answer cache key
+
+### Changes
+- **query_service:** Answer cache key is now derived from `mode`, `session_id`, and `question` (fingerprint `f"{mode}|{session_id or ''}|{question}"`), hashed with SHA256, and passed to `cache_key_query_answer(user_id, question_hash)`. Applied in both `run_query_pipeline` and `run_query_pipeline_stream`. Replaced MD5 with SHA256 for the fingerprint hash.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Previously the cache key used only a hash of the question, so the same question in different modes (global/local/hybrid) or different conversation sessions could receive a cached answer from another context. Mode affects retrieval strategy and session history is passed to synthesis; caching without these parameters could return incorrect or stale answers.
+
+### Breaking Changes
+None. Existing cache entries keyed only by user + question hash will no longer be hit; new entries are keyed by user + (mode|session_id|question) hash. Old keys will expire by TTL.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - BUGFIX: Scope neighborhood and entity search by (user_id, document_name, id)
 
 ### Changes
