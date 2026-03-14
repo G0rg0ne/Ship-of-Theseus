@@ -1,5 +1,24 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Guard top_k before vector-index calls in neo4j_service
+
+### Changes
+- **neo4j_service:** In `vector_search_entities` and `vector_search_communities`, added early return when `top_k <= 0` (alongside existing `not query_vector` check). This prevents computing `fetch_k`/`candidate_k` as non-positive and avoids calling `db.index.vector.queryNodes(...)` with invalid parameters.
+
+### Files Modified
+- `backend/app/services/neo4j_service.py`
+
+### Rationale
+When `top_k <= 0`, `fetch_k = min(..., top_k * 2)` and `candidate_k = min(..., top_k * 5)` can be zero or negative, which can break the Neo4j vector index API. Returning empty results for non-positive `top_k` is the correct behavior.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - BUGFIX: Answer cache key includes conversation-state fingerprint
 
 ### Changes

@@ -693,7 +693,7 @@ class Neo4jService:
         Uses entity_embedding_idx. Each result: user_id, document_name, id, label, entity_type, score
         (composite key avoids collisions across documents).
         """
-        if not query_vector:
+        if not query_vector or top_k <= 0:
             return []
         fetch_k = min(_VECTOR_SEARCH_FETCH_MAX, top_k * 2)
         driver = self._get_driver()
@@ -738,7 +738,7 @@ class Neo4jService:
         up to top_k results. Uses community_summary_embedding_idx.
         Each result: community_id, summary, level, keywords_json, score.
         """
-        if not query_vector:
+        if not query_vector or top_k <= 0:
             return []
         # Over-fetch so that after filtering by derived_user_id and level we still have up to top_k
         candidate_k = min(_VECTOR_SEARCH_FETCH_MAX, top_k * 5)
