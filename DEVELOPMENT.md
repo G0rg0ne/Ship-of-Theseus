@@ -1,5 +1,335 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Filter entity hits by QUERY_SIMILARITY_THRESHOLD before neighborhood expansion
+
+### Changes
+- **query_service:** In both the sync and streaming query pipelines, entity hits from `vector_search_entities` are now filtered by `score >= QUERY_SIMILARITY_THRESHOLD` before building `entity_keys` and calling `get_entity_neighborhood`. Previously the threshold was only applied later to communities, so low-score entity matches were still expanded into triplets and could dominate the local/hybrid prompt. A new `filtered_entities` list is used for expansion and passed as `entities_for_context` into `_build_context_and_sources` so context and sources only include above-threshold entities.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Noisy or low-similarity entity matches were being expanded into full neighborhoods, adding irrelevant triplets to the synthesis context. Applying the same similarity threshold to entities before expansion keeps the prompt focused on high-signal matches and aligns entity pruning with community pruning.
+
+### Breaking Changes
+None. Same threshold and behavior for communities; entities now use it earlier in the pipeline.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14] - FEATURE: Include vector-search entity hits in context and sources
+
+### Changes
+- **query_service:** `_build_context_and_sources` now accepts an optional `entities: List[Dict[str, Any]]` (e.g. from `vector_search_entities`). When provided, each entity is deduplicated by `(document_name, id)`, then added to the context string as an identity card line `[Entity <id>]\n<description_or_label+type>` and to the sources list as `SourceAttribution(type="entity", id=..., label=..., excerpt=description[:200]+'…')`. Entity cards are emitted before communities and triplets so synthesis sees matched entities first.
+- **query_service:** Both call sites of `_build_context_and_sources` (sync and streaming pipeline) now pass the retrieved `entities` from the local/hybrid flow.
+- **neo4j_service:** `vector_search_entities` now returns a `description` field (entity identity-card text from the node) so the query pipeline can surface it in context and in source excerpts.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+- `backend/app/services/neo4j_service.py`
+
+### Rationale
+The context builder previously ignored the actual entity hits from `vector_search_entities` and only used them to fetch triplets. Including entity identity cards and source attributions ensures the LLM and the UI get the matched entities and their descriptions for synthesis and citation.
+
+### Breaking Changes
+None. `entities` is optional; existing callers without it behave as before.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14] - CONFIG: Composite index for :Entity neighborhood lookups
+
+### Changes
+- **neo4j_service:** In `_ensure_indexes()`, added a composite b-tree index on `:Entity` for `(user_id, document_name, id)`. `get_entity_neighborhood()` matches `(e:Entity)` by this tuple on the request hot path; without the index Neo4j falls back to a label scan as the graph grows. Index creation uses `CREATE INDEX entity_scope_idx IF NOT EXISTS FOR (n:Entity) ON (n.user_id, n.document_name, n.id)` and runs before the existing Person/Organization/Location/KeyTerm indexes.
+
+### Files Modified
+- `backend/app/services/neo4j_service.py`
+
+### Rationale
+Neighborhood expansion uses the composite key (user_id, document_name, id) to scope Entity lookups. Existing indexes were only on :Person, :Organization, :Location, :KeyTerm (document_name and document_name+id); they do not apply to a generic :Entity match, so adding the Entity composite index allows the planner to use it for the MATCH in get_entity_neighborhood().
+
+### Breaking Changes
+None. Index is created if not exists; no migration script required.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14] - BUGFIX: Prevent unbounded history when CHAT_HISTORY_WINDOW is zero/invalid
+
+### Changes
+- **query_service:** When `CHAT_HISTORY_WINDOW` is 0 or invalid, `[-max_messages:]` with `max_messages == 0` returns the full list in Python, silently disabling trimming and bloating Redis/prompt payloads. Introduced `max_messages = max(0, int(history_window) * 2)` and a module-level `_trim_messages(items, max_n)` that returns `items[-max_n:]` when `max_n > 0` else `[]`. All history slices (cache fingerprint snapshot, cache-hit save, synthesis history, final save) now use `_trim_messages(...)` so zero/negative window yields empty history.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Python slice `list[-0:]` is equivalent to `list[:]`, so a zero window did not trim; fixing this ensures `CHAT_HISTORY_WINDOW=0` correctly disables conversation history.
+
+### Breaking Changes
+None. `CHAT_HISTORY_WINDOW=0` now behaves as documented (no history).
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14] - BUGFIX: Guard top_k before vector-index calls in neo4j_service
+
+### Changes
+- **neo4j_service:** In `vector_search_entities` and `vector_search_communities`, added early return when `top_k <= 0` (alongside existing `not query_vector` check). This prevents computing `fetch_k`/`candidate_k` as non-positive and avoids calling `db.index.vector.queryNodes(...)` with invalid parameters.
+
+### Files Modified
+- `backend/app/services/neo4j_service.py`
+
+### Rationale
+When `top_k <= 0`, `fetch_k = min(..., top_k * 2)` and `candidate_k = min(..., top_k * 5)` can be zero or negative, which can break the Neo4j vector index API. Returning empty results for non-positive `top_k` is the correct behavior.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14] - BUGFIX: Answer cache key includes conversation-state fingerprint
+
+### Changes
+- **query_service:** Answer cache fingerprint now includes a hash of the trimmed conversation history (same window used for synthesis), so cache identity reflects the current conversation state. In both `run_query_pipeline` and `run_query_pipeline_stream`: load chat history once before the cache check; build `history_snapshot` as the last `max_messages` entries, `history_hash = sha256(json.dumps(history_snapshot, sort_keys=True))`; set `cache_fingerprint = f"{mode}|{session_id or ''}|{history_hash}|{question}"`. Reuse the loaded history for synthesis to avoid a second Redis read. Removed duplicate history fetch in cache-hit branches.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Synthesis is history-aware (conversation context is sent to the LLM). The cache key previously used only `mode|session_id|question`, so the same question after new turns could return a stale cached answer. Including the history fingerprint ensures cache hits only when the question and the conversation state (last N turns) match.
+
+### Breaking Changes
+None. Existing cache entries will miss (different key shape); new entries are keyed by user + hash(mode|session_id|history_hash|question). Old keys expire by TTL.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14] - BUGFIX: CHAT_HISTORY_WINDOW applied as turns (not raw message count)
+
+### Changes
+- **query_service:** `CHAT_HISTORY_WINDOW` is documented as conversation **turns** (user+assistant pairs). The code was trimming to `history_window` **messages**, under-keeping context and diverging from the cache-hit branch (which already used `history_window * 2`). Introduced `max_messages = history_window * 2` in both `run_query_pipeline` and `run_query_pipeline_stream`; history is now sliced with `history_messages[-max_messages:]` when loading from Redis and `to_save[-max_messages:]` when saving, so behavior is consistent across cache-hit and normal paths.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Docs and config describe the setting as "max conversation turns"; one turn = two messages. Using raw `history_window` as message count kept only half the intended turns and was inconsistent with the cache-hit branches.
+
+### Breaking Changes
+None. Existing sessions may now retain more messages (up to 2×) before trim; behavior now matches documentation.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14 14:00] - BUGFIX: Include mode and session_id in query answer cache key
+
+### Changes
+- **query_service:** Answer cache key is now derived from `mode`, `session_id`, and `question` (fingerprint `f"{mode}|{session_id or ''}|{question}"`), hashed with SHA256, and passed to `cache_key_query_answer(user_id, question_hash)`. Applied in both `run_query_pipeline` and `run_query_pipeline_stream`. Replaced MD5 with SHA256 for the fingerprint hash.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Previously the cache key used only a hash of the question, so the same question in different modes (global/local/hybrid) or different conversation sessions could receive a cached answer from another context. Mode affects retrieval strategy and session history is passed to synthesis; caching without these parameters could return incorrect or stale answers.
+
+### Breaking Changes
+None. Existing cache entries keyed only by user + question hash will no longer be hit; new entries are keyed by user + (mode|session_id|question) hash. Old keys will expire by TTL.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14 14:01] - BUGFIX: Scope neighborhood and entity search by (user_id, document_name, id)
+
+### Changes
+- **vector_search_entities:** RETURN now includes `node.user_id`, `node.document_name`, and `node.id` so each result carries the full composite key; Python result dicts include `user_id` and `document_name` in addition to `id`, `label`, `entity_type`, and `score`.
+- **get_entity_neighborhood:** Signature changed from `(entity_ids: List[str], user_id: str)` to `(entity_keys: List[Dict[str, str]])` where each dict has `user_id`, `document_name`, and `id`. Cypher now uses `UNWIND $entity_keys AS ek` and matches on `e.user_id = ek.user_id AND e.document_name = ek.document_name AND e.id = ek.id` (and same-document target `t`) so neighborhood is scoped per document and avoids collisions when the same entity id exists in multiple documents.
+- **query_service:** Both `run_query_pipeline` and `run_query_pipeline_stream` build `entity_keys` from `vector_search_entities` results and call `get_entity_neighborhood(entity_keys)`; entities without `user_id` or `document_name` are skipped for neighborhood lookup.
+
+### Files Modified
+- `backend/app/services/neo4j_service.py`
+- `backend/app/services/query_service.py`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Neighborhood queries previously matched only on `entity_id` and `user_id`, allowing the same entity id in two documents to mix edges. Scoping by the full tuple `(user_id, document_name, id)` aligns with embedding key usage and keeps retrieval document-isolated.
+
+### Breaking Changes
+- **get_entity_neighborhood** now expects a list of `{user_id, document_name, id}` dicts instead of `(entity_ids, user_id)`. Callers must use the composite key from `vector_search_entities` (or equivalent).
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14 14:02] - REFACTOR: Use asyncio.get_running_loop() in query_service async paths
+
+### Changes
+- Replaced `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in `query_service.py` for all executor usage. In the first router-invoke block the loop variable was removed and `asyncio.get_running_loop().run_in_executor(...)` is used inline; in the two places where the loop is reused for multiple `run_in_executor` calls, `loop = asyncio.get_running_loop()` is used so subsequent calls stay correct.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+In Python 3.10+, `get_event_loop()` inside an async context is deprecated; `get_running_loop()` returns the currently running loop without fallback behavior and is the recommended API.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14 14:03] - BUGFIX: Log cache parse failures in query service instead of swallowing
+
+### Changes
+- Replaced bare `except Exception: pass` in `query_service.py` (cache-hit path and streaming cache-hit path) with DEBUG-level logging. On cache deserialization/parse failure, the exception and full traceback are now logged via `logger.opt(exception=True).debug(...)` before falling through to the full pipeline.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Silently passing on exceptions hid cache deserialization and validation issues; logging at DEBUG aids troubleshooting while keeping fallback behaviour unchanged.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14 14:04] - BUGFIX: Vector search over-fetch so post-filtering returns up to top_k
+
+### Changes
+- **Neo4j vector search:** `vector_search_entities` and `vector_search_communities` now over-fetch from the index (`fetch_k = min(500, top_k * 2)`) then apply `WHERE user_id` / `WHERE derived_user_id` and `LIMIT top_k`. Previously, requesting top_k and then filtering by user could return fewer than top_k results when multiple users share the same Neo4j DB.
+- **Cap:** Added `_VECTOR_SEARCH_FETCH_MAX = 500` to avoid unbounded over-fetching.
+- **Docstrings:** Both methods document the over-fetch behaviour for multi-tenant DBs.
+
+### Files Modified
+- `backend/app/services/neo4j_service.py`
+
+### Rationale
+Post-filtering by user_id after vector retrieval can yield sparse results; over-fetching then limiting ensures callers receive up to top_k results when data exists for the user.
+
+### Breaking Changes
+None. Return shape and semantics unchanged; results may now be fuller when multiple users share the DB.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14 14:05] - REFACTOR: Align chat message roles (user | assistant) with frontend
+
+### Changes
+- **Backend:** `ChatMessage.role` in `app/schemas/query.py` now uses `Literal["user", "assistant"]` instead of `"human" | "ai"`, aligned with the frontend `ChatSection` interface. Redis-stored history and all new writes use `"user"` and `"assistant"`. When reading from Redis, the query service accepts both legacy `"human"`/`"ai"` and `"user"`/`"assistant"` for backward compatibility.
+- **Docstring:** `ChatMessage` documents that role values are aligned with the frontend so chat history can be shared or exposed via API without mapping.
+
+### Files Modified
+- `backend/app/schemas/query.py` (Literal type, docstring)
+- `backend/app/services/query_service.py` (write "user"/"assistant", read "human"/"user" and "ai"/"assistant")
+- `README.md` (CHAT_HISTORY_WINDOW note)
+- `DEVELOPMENT.md`
+
+### Rationale
+Frontend uses "user" | "assistant"; backend previously used "human" | "ai". Aligning on "user" | "assistant" avoids mismatch when chat history is shared or exposed to the frontend and keeps a single vocabulary across the stack.
+
+### Breaking Changes
+None. Existing Redis entries with "human"/"ai" are still read correctly; new entries use "user"/"assistant".
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14] - FEATURE: Chatbot token and speed optimizations
+
+### Changes
+- **History windowing:** Added `CHAT_HISTORY_WINDOW` (default 6). Only the last N conversation turns are sent to the synthesis LLM. When saving to Redis, human turns store only the bare question (not the full context block). Legacy history entries with "Context:... Question: ..." are stripped to the question part when loaded for token savings.
+- **Summary cap:** Added `QUERY_MAX_SUMMARY_CHARS` (default 800). Community summaries in synthesis context are truncated to this length before being sent to the LLM.
+- **Answer cache:** Added `QUERY_ANSWER_CACHE_TTL` (default 3600) and Redis cache key `query:answer:{user_id}:{question_hash}`. Identical questions return the cached response and skip the full pipeline; the Q&A is still appended to chat history.
+- **Streaming:** Synthesis step now supports streaming. `POST /api/query` accepts `stream: true` in the body; response is `text/event-stream` with SSE events: `{ "content": "..." }` per token chunk, then `{ "done": true, "answer", "mode_used", "session_id", "sources" }`. Non-streaming behavior unchanged when `stream` is omitted or false.
+- **Frontend:** ChatSection uses streaming by default: sends `stream: true`, consumes the SSE response, and appends tokens to the assistant message as they arrive. Shows "Thinking…" in the assistant bubble until the first token.
+
+### Files Modified
+- `backend/app/core/config.py` (CHAT_HISTORY_WINDOW, QUERY_MAX_SUMMARY_CHARS, QUERY_ANSWER_CACHE_TTL)
+- `backend/app/core/cache.py` (cache_key_query_answer)
+- `backend/app/services/query_service.py` (_human_content_to_question, history trim, summary truncation, answer cache, run_query_pipeline_stream)
+- `backend/app/api/v1/endpoints/query.py` (stream query param, StreamingResponse)
+- `backend/app/schemas/query.py` (stream field on QueryRequest)
+- `frontend-next/src/components/chat/ChatSection.tsx` (streaming fetch, SSE parsing, incremental message update)
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Chat felt slow due to unbounded history and large context. Windowing and summary truncation cut token usage; streaming improves perceived latency; answer cache makes repeated questions instant.
+
+### Breaking Changes
+None. Existing clients that do not send `stream: true` receive the same JSON response as before.
+
+### Next Steps
+If the project uses `.env.example`, add the new variables: `CHAT_HISTORY_WINDOW`, `QUERY_MAX_SUMMARY_CHARS`, `QUERY_ANSWER_CACHE_TTL`.
+
+---
+
+## [2026-03-13] - FEATURE: GraphRAG Query Pipeline (chat with your brain)
+
+### Changes
+- **Backend:** Implemented full 4-stage GraphRAG query pipeline: (1) Intent Router (LLM classifies query as global/local/hybrid), (2) Retrieval via Neo4j vector search on `entity_embedding_idx` and `community_summary_embedding_idx` plus 1-hop entity neighborhood, (3) Context pruning (score threshold, deduplication), (4) LLM synthesis with conversation history. Conversation history is stored in Redis per user/session and loaded each request for multi-turn answers.
+- **Neo4j:** Added `vector_search_entities`, `vector_search_communities`, and `get_entity_neighborhood` to `neo4j_service.py`.
+- **API:** New `POST /api/query` endpoint; request body `question`, optional `mode` (auto|global|local|hybrid), optional `session_id`; response includes `answer`, `mode_used`, `session_id`, `sources` (community/entity attribution).
+- **Prompts:** Added `query_router.json` (few-shot intent classifier) and `query_synthesis.json` (answer + cite sources).
+- **Config:** Added `QUERY_ROUTER_MODEL`, `QUERY_SYNTHESIS_MODEL`, `QUERY_ENTITY_TOP_K`, `QUERY_COMMUNITY_TOP_K`, `QUERY_SIMILARITY_THRESHOLD`, `CHAT_HISTORY_TTL_SECONDS`.
+- **Frontend:** Wired `ChatSection` to `queryBrain()` API; messages state, loading indicator, session ID in localStorage, message bubbles and source attribution pills below assistant replies. Dashboard passes `token` to `ChatSection`.
+- **Cache:** Added `cache_key_chat_history(user_id, session_id)` and Redis persistence for chat history.
+
+### Files Modified
+- `backend/app/schemas/query.py` (new)
+- `backend/app/services/neo4j_service.py`
+- `backend/app/services/query_service.py` (new)
+- `backend/app/api/v1/endpoints/query.py` (new)
+- `backend/app/core/config.py`
+- `backend/app/core/cache.py`
+- `backend/app/main.py`
+- `backend/app/prompts/query_router.json` (new)
+- `backend/app/prompts/query_synthesis.json` (new)
+- `frontend-next/src/lib/api.ts` (queryBrain, QueryResponse, SourceAttribution, QueryMode)
+- `frontend-next/src/components/chat/ChatSection.tsx`
+- `frontend-next/src/app/dashboard/page.tsx`
+- `backend/requirements.txt` (added `langchain-core>=0.3.0` for query service)
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Users need to ask questions against their knowledge graph and get answers grounded in community summaries and entity triplets, with conversation context and source attribution. The router avoids over-fetching (e.g. global questions use only community summaries).
+
+### Breaking Changes
+None. New endpoint and optional frontend token prop.
+
+### Next Steps
+Optional: add tests for query pipeline and `POST /api/query` endpoint. `langchain-core` was added to `backend/requirements.txt` for `InMemoryChatMessageHistory` and message types used by the query service.
+
+---
+
 ## [2026-03-13 16:20] - DOCS: Clarify email verification endpoints
 
 ### Changes

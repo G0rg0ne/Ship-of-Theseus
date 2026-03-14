@@ -33,6 +33,11 @@ def _serialize_value(v: Any) -> Any:
     return str(v)
 
 
+# Max candidates to request from vector index when over-fetching for user filtering.
+# Post-filtering by user_id can return fewer than top_k; over-fetching mitigates sparse results.
+_VECTOR_SEARCH_FETCH_MAX = 500
+
+
 class Neo4jService:
     """Service for persisting DocumentGraph to Neo4j and querying by document_name."""
 
@@ -87,7 +92,11 @@ class Neo4jService:
             return False
 
     def _ensure_indexes(self, session: Any) -> None:
-        """Create indexes per label for document_name and (document_name, id) if they do not exist."""
+        """Create indexes per label for document_name and (document_name, id) if they do not exist.
+        Also creates a composite index on :Entity (user_id, document_name, id) for neighborhood lookups."""
+        session.run(
+            "CREATE INDEX entity_scope_idx IF NOT EXISTS FOR (n:Entity) ON (n.user_id, n.document_name, n.id)"
+        )
         for label in ("Person", "Organization", "Location", "KeyTerm"):
             session.run(
                 f"CREATE INDEX document_name_{label}_idx IF NOT EXISTS FOR (n:{label}) ON (n.document_name)"
@@ -673,6 +682,131 @@ class Neo4jService:
                     "summary_fingerprint": record.get("summary_fingerprint"),
                 }
             return out
+
+    def vector_search_entities(
+        self,
+        user_id: str,
+        query_vector: List[float],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Vector similarity search on :Entity nodes. Returns up to top_k entities for the user.
+
+        Over-fetches from the index (capped by _VECTOR_SEARCH_FETCH_MAX) then filters by
+        user_id and limits to top_k, so multi-tenant DBs still return up to top_k results.
+        Uses entity_embedding_idx. Each result: user_id, document_name, id, label, entity_type,
+        description (identity card), score (composite key avoids collisions across documents).
+        """
+        if not query_vector or top_k <= 0:
+            return []
+        fetch_k = min(_VECTOR_SEARCH_FETCH_MAX, top_k * 2)
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('entity_embedding_idx', $fetch_k, $query_vector)
+                YIELD node, score
+                WHERE node.user_id = $user_id
+                RETURN node.user_id AS user_id, node.document_name AS document_name, node.id AS id,
+                       node.label AS label, node.entity_type AS entity_type,
+                       node.description AS description, score
+                LIMIT $top_k
+                """,
+                query_vector=query_vector,
+                fetch_k=fetch_k,
+                top_k=top_k,
+                user_id=user_id,
+            )
+            return [
+                {
+                    "user_id": record["user_id"] or "",
+                    "document_name": record["document_name"] or "",
+                    "id": record["id"],
+                    "label": record["label"] or "",
+                    "entity_type": record["entity_type"] or "",
+                    "description": record.get("description") or "",
+                    "score": float(record["score"]) if record.get("score") is not None else 0.0,
+                }
+                for record in result
+            ]
+
+    def vector_search_communities(
+        self,
+        user_id: str,
+        query_vector: List[float],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Vector similarity search on :Community nodes (root and mid level only).
+
+        Over-fetches from the index (candidate_k = top_k * overfetch factor, capped) then
+        filters by derived_user_id and level; trims to top_k so multi-tenant DBs return
+        up to top_k results. Uses community_summary_embedding_idx.
+        Each result: community_id, summary, level, keywords_json, score.
+        """
+        if not query_vector or top_k <= 0:
+            return []
+        # Over-fetch so that after filtering by derived_user_id and level we still have up to top_k
+        candidate_k = min(_VECTOR_SEARCH_FETCH_MAX, top_k * 5)
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('community_summary_embedding_idx', $candidate_k, $query_vector)
+                YIELD node, score
+                WHERE node.derived_user_id = $user_id AND node.level IN ['root', 'mid']
+                RETURN node.community_id AS community_id, node.summary AS summary,
+                       node.level AS level, node.keywords_json AS keywords_json, score
+                LIMIT $top_k
+                """,
+                query_vector=query_vector,
+                candidate_k=candidate_k,
+                top_k=top_k,
+                user_id=user_id,
+            )
+            return [
+                {
+                    "community_id": record["community_id"] or "",
+                    "summary": record["summary"] or "",
+                    "level": record["level"] or "",
+                    "keywords_json": record["keywords_json"] or "[]",
+                    "score": float(record["score"]) if record.get("score") is not None else 0.0,
+                }
+                for record in result
+            ]
+
+    def get_entity_neighborhood(
+        self,
+        entity_keys: List[Dict[str, str]],
+    ) -> List[Dict[str, Any]]:
+        """
+        For the given entity composite keys (user_id, document_name, id), return 1-hop RELATES
+        triplets: (source_label, relation_type, target_label, target_entity_type).
+        Scoped by full tuple to avoid collisions across documents.
+        """
+        if not entity_keys:
+            return []
+        driver = self._get_driver()
+        with driver.session(database=self._database) as session:
+            result = session.run(
+                """
+                UNWIND $entity_keys AS ek
+                MATCH (e:Entity)-[r:RELATES]->(t:Entity)
+                WHERE e.user_id = ek.user_id AND e.document_name = ek.document_name AND e.id = ek.id
+                  AND t.user_id = e.user_id AND t.document_name = e.document_name
+                RETURN e.label AS source_label, r.type AS relation_type, t.label AS target_label, t.entity_type AS target_entity_type
+                """,
+                entity_keys=entity_keys,
+            )
+            return [
+                {
+                    "source_label": record["source_label"] or "",
+                    "relation_type": record["relation_type"] or "",
+                    "target_label": record["target_label"] or "",
+                    "target_entity_type": record["target_entity_type"] or "",
+                }
+                for record in result
+            ]
 
     def save_community_nodes(
         self,

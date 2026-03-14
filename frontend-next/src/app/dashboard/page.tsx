@@ -256,7 +256,7 @@ export default function DashboardPage() {
 
         {/* Right panel: chat */}
         <aside className="hidden lg:flex flex-col min-w-0 min-h-0 border-border bg-background/50 overflow-hidden">
-          <ChatSection documents={documents} />
+          <ChatSection documents={documents} token={token} />
         </aside>
       </div>
     </main>

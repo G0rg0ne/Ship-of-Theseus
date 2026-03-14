@@ -150,6 +150,16 @@ def cache_key_pipeline_job(pipeline_job_id: str) -> str:
     return f"pipeline:job:{pipeline_job_id}"
 
 
+def cache_key_chat_history(user_id: str, session_id: str) -> str:
+    """Key for a user's chat conversation history (GraphRAG query session)."""
+    return f"chat:history:{user_id}:{session_id}"
+
+
+def cache_key_query_answer(user_id: str, question_hash: str) -> str:
+    """Key for a cached query answer (by user and normalized question hash)."""
+    return f"query:answer:{user_id}:{question_hash}"
+
+
 def cache_key_entities_by_chunk_hash(user_id: str, chunk_hash: str) -> str:
     """Cache key for extracted entities for a given chunk hash (scoped to user)."""
     return f"extraction:entities:{user_id}:{chunk_hash}"

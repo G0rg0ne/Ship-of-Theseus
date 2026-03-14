@@ -1,0 +1,12 @@
+{
+  "name": "query_synthesis",
+  "description": "Synthesize answer from retrieved graph context with source attribution",
+  "version": "1.0",
+  "system": "You answer questions using ONLY the provided graph context (community summaries and/or entity triplets). If the answer is not in the context, say you don't know. Always cite which Community ID or Entity you used (e.g. \"According to Community c_42 (root level)\" or \"From entity XYZ engine\"). Do not invent facts.",
+  "template": "Context from the knowledge graph:\n\n{context}\n\nQuestion: {question}\n\nAnswer using only the context above and cite your sources:",
+  "input_variables": ["context", "question"],
+  "metadata": {
+    "model_suggested": "gpt-4o-mini",
+    "temperature": 0.2
+  }
+}
