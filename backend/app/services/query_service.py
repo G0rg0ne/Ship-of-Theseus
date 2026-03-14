@@ -220,11 +220,16 @@ async def run_query_pipeline(
             ),
         )
         if entities:
-            entity_ids = [e.get("id") for e in entities if e.get("id")]
-            triplets = await loop.run_in_executor(
-                None,
-                lambda: neo4j_service.get_entity_neighborhood(entity_ids, user_id),
-            )
+            entity_keys = [
+                {"user_id": e["user_id"], "document_name": e["document_name"], "id": e["id"]}
+                for e in entities
+                if e.get("id") and e.get("user_id") is not None and e.get("document_name") is not None
+            ]
+            if entity_keys:
+                triplets = await loop.run_in_executor(
+                    None,
+                    lambda: neo4j_service.get_entity_neighborhood(entity_keys),
+                )
 
     # --- 3. Context pruning and source list ---
     context, sources = _build_context_and_sources(communities, triplets, threshold)
@@ -396,11 +401,16 @@ async def run_query_pipeline_stream(
             ),
         )
         if entities:
-            entity_ids = [e.get("id") for e in entities if e.get("id")]
-            triplets = await loop.run_in_executor(
-                None,
-                lambda: neo4j_service.get_entity_neighborhood(entity_ids, user_id),
-            )
+            entity_keys = [
+                {"user_id": e["user_id"], "document_name": e["document_name"], "id": e["id"]}
+                for e in entities
+                if e.get("id") and e.get("user_id") is not None and e.get("document_name") is not None
+            ]
+            if entity_keys:
+                triplets = await loop.run_in_executor(
+                    None,
+                    lambda: neo4j_service.get_entity_neighborhood(entity_keys),
+                )
 
     context, sources = _build_context_and_sources(communities, triplets, threshold)
 

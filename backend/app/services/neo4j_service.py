@@ -690,7 +690,8 @@ class Neo4jService:
 
         Over-fetches from the index (capped by _VECTOR_SEARCH_FETCH_MAX) then filters by
         user_id and limits to top_k, so multi-tenant DBs still return up to top_k results.
-        Uses entity_embedding_idx. Each result: id, label, entity_type, score.
+        Uses entity_embedding_idx. Each result: user_id, document_name, id, label, entity_type, score
+        (composite key avoids collisions across documents).
         """
         if not query_vector:
             return []
@@ -702,7 +703,8 @@ class Neo4jService:
                 CALL db.index.vector.queryNodes('entity_embedding_idx', $fetch_k, $query_vector)
                 YIELD node, score
                 WHERE node.user_id = $user_id
-                RETURN node.id AS id, node.label AS label, node.entity_type AS entity_type, score
+                RETURN node.user_id AS user_id, node.document_name AS document_name, node.id AS id,
+                       node.label AS label, node.entity_type AS entity_type, score
                 LIMIT $top_k
                 """,
                 query_vector=query_vector,
@@ -712,6 +714,8 @@ class Neo4jService:
             )
             return [
                 {
+                    "user_id": record["user_id"] or "",
+                    "document_name": record["document_name"] or "",
                     "id": record["id"],
                     "label": record["label"] or "",
                     "entity_type": record["entity_type"] or "",
@@ -767,24 +771,26 @@ class Neo4jService:
 
     def get_entity_neighborhood(
         self,
-        entity_ids: List[str],
-        user_id: str,
+        entity_keys: List[Dict[str, str]],
     ) -> List[Dict[str, Any]]:
         """
-        For the given entity IDs, return 1-hop RELATES triplets: (source_label, relation_type, target_label, target_entity_type).
+        For the given entity composite keys (user_id, document_name, id), return 1-hop RELATES
+        triplets: (source_label, relation_type, target_label, target_entity_type).
+        Scoped by full tuple to avoid collisions across documents.
         """
-        if not entity_ids:
+        if not entity_keys:
             return []
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             result = session.run(
                 """
+                UNWIND $entity_keys AS ek
                 MATCH (e:Entity)-[r:RELATES]->(t:Entity)
-                WHERE e.id IN $entity_ids AND e.user_id = $user_id AND t.user_id = $user_id
+                WHERE e.user_id = ek.user_id AND e.document_name = ek.document_name AND e.id = ek.id
+                  AND t.user_id = e.user_id AND t.document_name = e.document_name
                 RETURN e.label AS source_label, r.type AS relation_type, t.label AS target_label, t.entity_type AS target_entity_type
                 """,
-                entity_ids=entity_ids,
-                user_id=user_id,
+                entity_keys=entity_keys,
             )
             return [
                 {

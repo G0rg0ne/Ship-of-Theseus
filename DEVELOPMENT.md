@@ -1,5 +1,29 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Scope neighborhood and entity search by (user_id, document_name, id)
+
+### Changes
+- **vector_search_entities:** RETURN now includes `node.user_id`, `node.document_name`, and `node.id` so each result carries the full composite key; Python result dicts include `user_id` and `document_name` in addition to `id`, `label`, `entity_type`, and `score`.
+- **get_entity_neighborhood:** Signature changed from `(entity_ids: List[str], user_id: str)` to `(entity_keys: List[Dict[str, str]])` where each dict has `user_id`, `document_name`, and `id`. Cypher now uses `UNWIND $entity_keys AS ek` and matches on `e.user_id = ek.user_id AND e.document_name = ek.document_name AND e.id = ek.id` (and same-document target `t`) so neighborhood is scoped per document and avoids collisions when the same entity id exists in multiple documents.
+- **query_service:** Both `run_query_pipeline` and `run_query_pipeline_stream` build `entity_keys` from `vector_search_entities` results and call `get_entity_neighborhood(entity_keys)`; entities without `user_id` or `document_name` are skipped for neighborhood lookup.
+
+### Files Modified
+- `backend/app/services/neo4j_service.py`
+- `backend/app/services/query_service.py`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Neighborhood queries previously matched only on `entity_id` and `user_id`, allowing the same entity id in two documents to mix edges. Scoping by the full tuple `(user_id, document_name, id)` aligns with embedding key usage and keeps retrieval document-isolated.
+
+### Breaking Changes
+- **get_entity_neighborhood** now expects a list of `{user_id, document_name, id}` dicts instead of `(entity_ids, user_id)`. Callers must use the composite key from `vector_search_entities` (or equivalent).
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - REFACTOR: Use asyncio.get_running_loop() in query_service async paths
 
 ### Changes
