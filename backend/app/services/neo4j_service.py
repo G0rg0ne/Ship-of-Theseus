@@ -694,8 +694,8 @@ class Neo4jService:
 
         Over-fetches from the index (capped by _VECTOR_SEARCH_FETCH_MAX) then filters by
         user_id and limits to top_k, so multi-tenant DBs still return up to top_k results.
-        Uses entity_embedding_idx. Each result: user_id, document_name, id, label, entity_type, score
-        (composite key avoids collisions across documents).
+        Uses entity_embedding_idx. Each result: user_id, document_name, id, label, entity_type,
+        description (identity card), score (composite key avoids collisions across documents).
         """
         if not query_vector or top_k <= 0:
             return []
@@ -708,7 +708,8 @@ class Neo4jService:
                 YIELD node, score
                 WHERE node.user_id = $user_id
                 RETURN node.user_id AS user_id, node.document_name AS document_name, node.id AS id,
-                       node.label AS label, node.entity_type AS entity_type, score
+                       node.label AS label, node.entity_type AS entity_type,
+                       node.description AS description, score
                 LIMIT $top_k
                 """,
                 query_vector=query_vector,
@@ -723,6 +724,7 @@ class Neo4jService:
                     "id": record["id"],
                     "label": record["label"] or "",
                     "entity_type": record["entity_type"] or "",
+                    "description": record.get("description") or "",
                     "score": float(record["score"]) if record.get("score") is not None else 0.0,
                 }
                 for record in result

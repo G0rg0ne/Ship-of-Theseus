@@ -72,13 +72,42 @@ def _build_context_and_sources(
     communities: List[Dict[str, Any]],
     triplets: List[Dict[str, Any]],
     threshold: float,
+    entities: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[str, List[SourceAttribution]]:
-    """Prune by score, deduplicate, build context string and sources list."""
+    """Prune by score, deduplicate, build context string and sources list.
+
+    If entities is provided (e.g. from vector_search_entities), each entity is
+    added to context as an identity card and to sources, deduplicated by entity id.
+    """
+    entities = entities or []
     lines: List[str] = []
     sources: List[SourceAttribution] = []
     seen_community: set = set()
     seen_entity: set = set()
+    seen_entity_id: set = set()  # (document_name, id) for entity list dedupe
     max_summary_chars = getattr(settings, "QUERY_MAX_SUMMARY_CHARS", 800)
+
+    for e in entities:
+        eid = e.get("id")
+        doc_name = e.get("document_name") or ""
+        key = (doc_name, eid)
+        if eid is None or key in seen_entity_id:
+            continue
+        seen_entity_id.add(key)
+        description = (e.get("description") or "").strip()
+        label = e.get("label") or ""
+        entity_type = e.get("entity_type") or ""
+        identity_text = description or f"{label} ({entity_type})".strip() or str(eid)
+        excerpt = (description[:200] + "…") if len(description) > 200 else (description or identity_text)
+        lines.append(f"[Entity {eid}]\n{identity_text}")
+        sources.append(
+            SourceAttribution(
+                type="entity",
+                id=str(eid),
+                label=label,
+                excerpt=excerpt,
+            )
+        )
 
     for c in communities:
         if c.get("score", 0) < threshold:
@@ -247,7 +276,9 @@ async def run_query_pipeline(
                 )
 
     # --- 3. Context pruning and source list ---
-    context, sources = _build_context_and_sources(communities, triplets, threshold)
+    context, sources = _build_context_and_sources(
+        communities, triplets, threshold, entities=entities
+    )
 
     # --- 4. Prepare for synthesis (history already loaded for cache fingerprint) ---
     history_messages: List[Any] = []
@@ -435,7 +466,9 @@ async def run_query_pipeline_stream(
                     lambda: neo4j_service.get_entity_neighborhood(entity_keys),
                 )
 
-    context, sources = _build_context_and_sources(communities, triplets, threshold)
+    context, sources = _build_context_and_sources(
+        communities, triplets, threshold, entities=entities
+    )
 
     # History already loaded for cache fingerprint; reuse for synthesis
     history_messages = []

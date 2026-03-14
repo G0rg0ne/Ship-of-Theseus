@@ -1,5 +1,27 @@
 # Development log
 
+## [2026-03-14] - FEATURE: Include vector-search entity hits in context and sources
+
+### Changes
+- **query_service:** `_build_context_and_sources` now accepts an optional `entities: List[Dict[str, Any]]` (e.g. from `vector_search_entities`). When provided, each entity is deduplicated by `(document_name, id)`, then added to the context string as an identity card line `[Entity <id>]\n<description_or_label+type>` and to the sources list as `SourceAttribution(type="entity", id=..., label=..., excerpt=description[:200]+'…')`. Entity cards are emitted before communities and triplets so synthesis sees matched entities first.
+- **query_service:** Both call sites of `_build_context_and_sources` (sync and streaming pipeline) now pass the retrieved `entities` from the local/hybrid flow.
+- **neo4j_service:** `vector_search_entities` now returns a `description` field (entity identity-card text from the node) so the query pipeline can surface it in context and in source excerpts.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+- `backend/app/services/neo4j_service.py`
+
+### Rationale
+The context builder previously ignored the actual entity hits from `vector_search_entities` and only used them to fetch triplets. Including entity identity cards and source attributions ensures the LLM and the UI get the matched entities and their descriptions for synthesis and citation.
+
+### Breaking Changes
+None. `entities` is optional; existing callers without it behave as before.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - CONFIG: Composite index for :Entity neighborhood lookups
 
 ### Changes
