@@ -1,6 +1,25 @@
 # Development log
 
-## [2026-03-14] - BUGFIX: Include mode and session_id in query answer cache key
+## [2026-03-14] - BUGFIX: CHAT_HISTORY_WINDOW applied as turns (not raw message count)
+
+### Changes
+- **query_service:** `CHAT_HISTORY_WINDOW` is documented as conversation **turns** (user+assistant pairs). The code was trimming to `history_window` **messages**, under-keeping context and diverging from the cache-hit branch (which already used `history_window * 2`). Introduced `max_messages = history_window * 2` in both `run_query_pipeline` and `run_query_pipeline_stream`; history is now sliced with `history_messages[-max_messages:]` when loading from Redis and `to_save[-max_messages:]` when saving, so behavior is consistent across cache-hit and normal paths.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Docs and config describe the setting as "max conversation turns"; one turn = two messages. Using raw `history_window` as message count kept only half the intended turns and was inconsistent with the cache-hit branches.
+
+### Breaking Changes
+None. Existing sessions may now retain more messages (up to 2×) before trim; behavior now matches documentation.
+
+### Next Steps
+None.
+
+---
+
+## [2026-03-14 14:00] - BUGFIX: Include mode and session_id in query answer cache key
 
 ### Changes
 - **query_service:** Answer cache key is now derived from `mode`, `session_id`, and `question` (fingerprint `f"{mode}|{session_id or ''}|{question}"`), hashed with SHA256, and passed to `cache_key_query_answer(user_id, question_hash)`. Applied in both `run_query_pipeline` and `run_query_pipeline_stream`. Replaced MD5 with SHA256 for the fingerprint hash.
@@ -19,7 +38,7 @@ None.
 
 ---
 
-## [2026-03-14] - BUGFIX: Scope neighborhood and entity search by (user_id, document_name, id)
+## [2026-03-14 14:01] - BUGFIX: Scope neighborhood and entity search by (user_id, document_name, id)
 
 ### Changes
 - **vector_search_entities:** RETURN now includes `node.user_id`, `node.document_name`, and `node.id` so each result carries the full composite key; Python result dicts include `user_id` and `document_name` in addition to `id`, `label`, `entity_type`, and `score`.
@@ -43,7 +62,7 @@ None.
 
 ---
 
-## [2026-03-14] - REFACTOR: Use asyncio.get_running_loop() in query_service async paths
+## [2026-03-14 14:02] - REFACTOR: Use asyncio.get_running_loop() in query_service async paths
 
 ### Changes
 - Replaced `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in `query_service.py` for all executor usage. In the first router-invoke block the loop variable was removed and `asyncio.get_running_loop().run_in_executor(...)` is used inline; in the two places where the loop is reused for multiple `run_in_executor` calls, `loop = asyncio.get_running_loop()` is used so subsequent calls stay correct.
@@ -62,7 +81,7 @@ None.
 
 ---
 
-## [2026-03-14] - BUGFIX: Log cache parse failures in query service instead of swallowing
+## [2026-03-14 14:03] - BUGFIX: Log cache parse failures in query service instead of swallowing
 
 ### Changes
 - Replaced bare `except Exception: pass` in `query_service.py` (cache-hit path and streaming cache-hit path) with DEBUG-level logging. On cache deserialization/parse failure, the exception and full traceback are now logged via `logger.opt(exception=True).debug(...)` before falling through to the full pipeline.
@@ -81,7 +100,7 @@ None.
 
 ---
 
-## [2026-03-14] - BUGFIX: Vector search over-fetch so post-filtering returns up to top_k
+## [2026-03-14 14:04] - BUGFIX: Vector search over-fetch so post-filtering returns up to top_k
 
 ### Changes
 - **Neo4j vector search:** `vector_search_entities` and `vector_search_communities` now over-fetch from the index (`fetch_k = min(500, top_k * 2)`) then apply `WHERE user_id` / `WHERE derived_user_id` and `LIMIT top_k`. Previously, requesting top_k and then filtering by user could return fewer than top_k results when multiple users share the same Neo4j DB.
@@ -102,7 +121,7 @@ None.
 
 ---
 
-## [2026-03-14] - REFACTOR: Align chat message roles (user | assistant) with frontend
+## [2026-03-14 14:05] - REFACTOR: Align chat message roles (user | assistant) with frontend
 
 ### Changes
 - **Backend:** `ChatMessage.role` in `app/schemas/query.py` now uses `Literal["user", "assistant"]` instead of `"human" | "ai"`, aligned with the frontend `ChatSection` interface. Redis-stored history and all new writes use `"user"` and `"assistant"`. When reading from Redis, the query service accepts both legacy `"human"`/`"ai"` and `"user"`/`"assistant"` for backward compatibility.

@@ -138,6 +138,7 @@ async def run_query_pipeline(
     threshold = getattr(settings, "QUERY_SIMILARITY_THRESHOLD", 0.7)
     ttl = getattr(settings, "CHAT_HISTORY_TTL_SECONDS", 86400)
     history_window = getattr(settings, "CHAT_HISTORY_WINDOW", 6)
+    max_messages = history_window * 2  # turns = user+assistant pairs
     answer_cache_ttl = getattr(settings, "QUERY_ANSWER_CACHE_TTL", 3600)
 
     # --- 0. Answer cache (skip pipeline for repeated identical questions) ---
@@ -251,8 +252,8 @@ async def run_query_pipeline(
                 history_messages.append(HumanMessage(content=content))
             elif role in ("ai", "assistant"):
                 history_messages.append(AIMessage(content=content))
-        # Keep only the last N turns to cap token usage
-        history_messages = history_messages[-history_window:]
+        # Keep only the last N turns to cap token usage (each turn = 2 messages)
+        history_messages = history_messages[-max_messages:]
 
     synthesis_prompt_data = PromptManager.get_prompt("query_synthesis")
     system_text = synthesis_prompt_data.get("system") or "Answer using only the provided context. Cite sources."
@@ -284,7 +285,7 @@ async def run_query_pipeline(
         role = "user" if getattr(m, "type", None) == "human" else "assistant"
         content = getattr(m, "content", str(m))
         to_save.append({"role": role, "content": content})
-    await cache_set(cache_key, to_save, ttl_seconds=ttl)
+    await cache_set(cache_key, to_save[-max_messages:], ttl_seconds=ttl)
 
     response = QueryResponse(
         answer=answer.strip(),
@@ -317,6 +318,7 @@ async def run_query_pipeline_stream(
     threshold = getattr(settings, "QUERY_SIMILARITY_THRESHOLD", 0.7)
     ttl = getattr(settings, "CHAT_HISTORY_TTL_SECONDS", 86400)
     history_window = getattr(settings, "CHAT_HISTORY_WINDOW", 6)
+    max_messages = history_window * 2  # turns = user+assistant pairs
     answer_cache_ttl = getattr(settings, "QUERY_ANSWER_CACHE_TTL", 3600)
 
     cache_fingerprint = f"{mode}|{session_id or ''}|{question}".encode("utf-8")
@@ -430,7 +432,8 @@ async def run_query_pipeline_stream(
                 history_messages.append(HumanMessage(content=content))
             elif role in ("ai", "assistant"):
                 history_messages.append(AIMessage(content=content))
-        history_messages = history_messages[-history_window:]
+        # Keep only the last N turns to cap token usage (each turn = 2 messages)
+        history_messages = history_messages[-max_messages:]
 
     synthesis_prompt_data = PromptManager.get_prompt("query_synthesis")
     system_text = synthesis_prompt_data.get("system") or "Answer using only the provided context. Cite sources."
@@ -467,7 +470,7 @@ async def run_query_pipeline_stream(
         role = "user" if getattr(m, "type", None) == "human" else "assistant"
         content = getattr(m, "content", str(m))
         to_save.append({"role": role, "content": content})
-    await cache_set(cache_key, to_save, ttl_seconds=ttl)
+    await cache_set(cache_key, to_save[-max_messages:], ttl_seconds=ttl)
 
     response = QueryResponse(
         answer=answer,
