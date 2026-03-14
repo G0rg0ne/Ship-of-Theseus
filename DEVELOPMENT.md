@@ -1,5 +1,26 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Vector search over-fetch so post-filtering returns up to top_k
+
+### Changes
+- **Neo4j vector search:** `vector_search_entities` and `vector_search_communities` now over-fetch from the index (`fetch_k = min(500, top_k * 2)`) then apply `WHERE user_id` / `WHERE derived_user_id` and `LIMIT top_k`. Previously, requesting top_k and then filtering by user could return fewer than top_k results when multiple users share the same Neo4j DB.
+- **Cap:** Added `_VECTOR_SEARCH_FETCH_MAX = 500` to avoid unbounded over-fetching.
+- **Docstrings:** Both methods document the over-fetch behaviour for multi-tenant DBs.
+
+### Files Modified
+- `backend/app/services/neo4j_service.py`
+
+### Rationale
+Post-filtering by user_id after vector retrieval can yield sparse results; over-fetching then limiting ensures callers receive up to top_k results when data exists for the user.
+
+### Breaking Changes
+None. Return shape and semantics unchanged; results may now be fuller when multiple users share the DB.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - REFACTOR: Align chat message roles (user | assistant) with frontend
 
 ### Changes

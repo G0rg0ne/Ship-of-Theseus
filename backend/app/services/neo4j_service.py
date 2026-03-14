@@ -33,6 +33,11 @@ def _serialize_value(v: Any) -> Any:
     return str(v)
 
 
+# Max candidates to request from vector index when over-fetching for user filtering.
+# Post-filtering by user_id can return fewer than top_k; over-fetching mitigates sparse results.
+_VECTOR_SEARCH_FETCH_MAX = 500
+
+
 class Neo4jService:
     """Service for persisting DocumentGraph to Neo4j and querying by document_name."""
 
@@ -681,22 +686,27 @@ class Neo4jService:
         top_k: int,
     ) -> List[Dict[str, Any]]:
         """
-        Vector similarity search on :Entity nodes. Returns top_k entities for the user.
+        Vector similarity search on :Entity nodes. Returns up to top_k entities for the user.
 
+        Over-fetches from the index (capped by _VECTOR_SEARCH_FETCH_MAX) then filters by
+        user_id and limits to top_k, so multi-tenant DBs still return up to top_k results.
         Uses entity_embedding_idx. Each result: id, label, entity_type, score.
         """
         if not query_vector:
             return []
+        fetch_k = min(_VECTOR_SEARCH_FETCH_MAX, top_k * 2)
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             result = session.run(
                 """
-                CALL db.index.vector.queryNodes('entity_embedding_idx', $top_k, $query_vector)
+                CALL db.index.vector.queryNodes('entity_embedding_idx', $fetch_k, $query_vector)
                 YIELD node, score
                 WHERE node.user_id = $user_id
                 RETURN node.id AS id, node.label AS label, node.entity_type AS entity_type, score
+                LIMIT $top_k
                 """,
                 query_vector=query_vector,
+                fetch_k=fetch_k,
                 top_k=top_k,
                 user_id=user_id,
             )
@@ -719,21 +729,26 @@ class Neo4jService:
         """
         Vector similarity search on :Community nodes (root and mid level only).
 
+        Over-fetches from the index (capped) then filters by derived_user_id and limits to
+        top_k, so multi-tenant DBs still return up to top_k results.
         Uses community_summary_embedding_idx. Each result: community_id, summary, level, keywords_json, score.
         """
         if not query_vector:
             return []
+        fetch_k = min(_VECTOR_SEARCH_FETCH_MAX, top_k * 2)
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             result = session.run(
                 """
-                CALL db.index.vector.queryNodes('community_summary_embedding_idx', $top_k, $query_vector)
+                CALL db.index.vector.queryNodes('community_summary_embedding_idx', $fetch_k, $query_vector)
                 YIELD node, score
                 WHERE node.derived_user_id = $user_id AND node.level IN ['root', 'mid']
                 RETURN node.community_id AS community_id, node.summary AS summary,
                        node.level AS level, node.keywords_json AS keywords_json, score
+                LIMIT $top_k
                 """,
                 query_vector=query_vector,
+                fetch_k=fetch_k,
                 top_k=top_k,
                 user_id=user_id,
             )
