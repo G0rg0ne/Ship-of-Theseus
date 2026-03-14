@@ -1,5 +1,24 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Answer cache key includes conversation-state fingerprint
+
+### Changes
+- **query_service:** Answer cache fingerprint now includes a hash of the trimmed conversation history (same window used for synthesis), so cache identity reflects the current conversation state. In both `run_query_pipeline` and `run_query_pipeline_stream`: load chat history once before the cache check; build `history_snapshot` as the last `max_messages` entries, `history_hash = sha256(json.dumps(history_snapshot, sort_keys=True))`; set `cache_fingerprint = f"{mode}|{session_id or ''}|{history_hash}|{question}"`. Reuse the loaded history for synthesis to avoid a second Redis read. Removed duplicate history fetch in cache-hit branches.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Synthesis is history-aware (conversation context is sent to the LLM). The cache key previously used only `mode|session_id|question`, so the same question after new turns could return a stale cached answer. Including the history fingerprint ensures cache hits only when the question and the conversation state (last N turns) match.
+
+### Breaking Changes
+None. Existing cache entries will miss (different key shape); new entries are keyed by user + hash(mode|session_id|history_hash|question). Old keys expire by TTL.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - BUGFIX: CHAT_HISTORY_WINDOW applied as turns (not raw message count)
 
 ### Changes

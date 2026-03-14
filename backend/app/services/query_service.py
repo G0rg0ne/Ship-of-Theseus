@@ -141,8 +141,18 @@ async def run_query_pipeline(
     max_messages = history_window * 2  # turns = user+assistant pairs
     answer_cache_ttl = getattr(settings, "QUERY_ANSWER_CACHE_TTL", 3600)
 
+    # Load history once for cache fingerprint and later synthesis
+    cache_key = cache_key_chat_history(user_id, session_id)
+    raw_history = await cache_get(cache_key)
+    history_list = list(raw_history) if isinstance(raw_history, list) else []
+    history_snapshot = history_list[-max_messages:] if max_messages > 0 else []
+    history_hash = hashlib.sha256(
+        json.dumps(history_snapshot, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
     # --- 0. Answer cache (skip pipeline for repeated identical questions) ---
-    cache_fingerprint = f"{mode}|{session_id or ''}|{question}".encode("utf-8")
+    # Include history fingerprint so cache matches synthesis context (same question + different turns = different key).
+    cache_fingerprint = f"{mode}|{session_id or ''}|{history_hash}|{question}".encode("utf-8")
     question_hash = hashlib.sha256(cache_fingerprint).hexdigest()
     answer_cache_key = cache_key_query_answer(user_id, question_hash)
     cached_response = await cache_get(answer_cache_key)
@@ -154,9 +164,7 @@ async def run_query_pipeline(
                 session_id=session_id,
                 sources=cached_response.get("sources") or [],
             )
-            # Append this Q&A to chat history so conversation stays consistent
-            cache_key = cache_key_chat_history(user_id, session_id)
-            raw_history = await cache_get(cache_key)
+            # Append this Q&A to chat history so conversation stays consistent (reuse loaded history)
             history_list = list(raw_history) if isinstance(raw_history, list) else []
             history_list.append({"role": "user", "content": question})
             history_list.append({"role": "assistant", "content": response.answer})
@@ -236,9 +244,7 @@ async def run_query_pipeline(
     # --- 3. Context pruning and source list ---
     context, sources = _build_context_and_sources(communities, triplets, threshold)
 
-    # --- 4. Load chat history from Redis and prepare for synthesis ---
-    cache_key = cache_key_chat_history(user_id, session_id)
-    raw_history = await cache_get(cache_key)
+    # --- 4. Prepare for synthesis (history already loaded for cache fingerprint) ---
     history_messages: List[Any] = []
     if isinstance(raw_history, list):
         for item in raw_history:
@@ -321,7 +327,17 @@ async def run_query_pipeline_stream(
     max_messages = history_window * 2  # turns = user+assistant pairs
     answer_cache_ttl = getattr(settings, "QUERY_ANSWER_CACHE_TTL", 3600)
 
-    cache_fingerprint = f"{mode}|{session_id or ''}|{question}".encode("utf-8")
+    # Load history once for cache fingerprint and later synthesis
+    cache_key = cache_key_chat_history(user_id, session_id)
+    raw_history = await cache_get(cache_key)
+    history_list = list(raw_history) if isinstance(raw_history, list) else []
+    history_snapshot = history_list[-max_messages:] if max_messages > 0 else []
+    history_hash = hashlib.sha256(
+        json.dumps(history_snapshot, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+    # Include history fingerprint so cache matches synthesis context (same question + different turns = different key).
+    cache_fingerprint = f"{mode}|{session_id or ''}|{history_hash}|{question}".encode("utf-8")
     question_hash = hashlib.sha256(cache_fingerprint).hexdigest()
     answer_cache_key = cache_key_query_answer(user_id, question_hash)
     cached_response = await cache_get(answer_cache_key)
@@ -333,8 +349,6 @@ async def run_query_pipeline_stream(
                 session_id=session_id,
                 sources=cached_response.get("sources") or [],
             )
-            cache_key = cache_key_chat_history(user_id, session_id)
-            raw_history = await cache_get(cache_key)
             history_list = list(raw_history) if isinstance(raw_history, list) else []
             history_list.append({"role": "user", "content": question})
             history_list.append({"role": "assistant", "content": response.answer})
@@ -418,8 +432,7 @@ async def run_query_pipeline_stream(
 
     context, sources = _build_context_and_sources(communities, triplets, threshold)
 
-    cache_key = cache_key_chat_history(user_id, session_id)
-    raw_history = await cache_get(cache_key)
+    # History already loaded for cache fingerprint; reuse for synthesis
     history_messages = []
     if isinstance(raw_history, list):
         for item in raw_history:
