@@ -1,5 +1,24 @@
 # Development log
 
+## [2026-03-14] - BUGFIX: Log cache parse failures in query service instead of swallowing
+
+### Changes
+- Replaced bare `except Exception: pass` in `query_service.py` (cache-hit path and streaming cache-hit path) with DEBUG-level logging. On cache deserialization/parse failure, the exception and full traceback are now logged via `logger.opt(exception=True).debug(...)` before falling through to the full pipeline.
+
+### Files Modified
+- `backend/app/services/query_service.py`
+
+### Rationale
+Silently passing on exceptions hid cache deserialization and validation issues; logging at DEBUG aids troubleshooting while keeping fallback behaviour unchanged.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-14] - BUGFIX: Vector search over-fetch so post-filtering returns up to top_k
 
 ### Changes

@@ -160,8 +160,10 @@ async def run_query_pipeline(
             history_list.append({"role": "assistant", "content": response.answer})
             await cache_set(cache_key, history_list[-(history_window * 2) :], ttl_seconds=ttl)
             return response
-        except Exception:
-            pass
+        except Exception as e:
+            logger.opt(exception=True).debug(
+                "Cache hit parse failed, running full pipeline: {}", e
+            )
 
     # --- 1. Intent Router (when mode is auto) ---
     if mode == "auto":
@@ -337,8 +339,10 @@ async def run_query_pipeline_stream(
                 "sources": [s.model_dump() if hasattr(s, "model_dump") else s for s in response.sources],
             }
             return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.opt(exception=True).debug(
+                "Cache hit parse failed (streaming), running full pipeline: {}", e
+            )
 
     loop = asyncio.get_event_loop()
     if mode == "auto":
