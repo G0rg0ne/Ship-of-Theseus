@@ -729,18 +729,20 @@ class Neo4jService:
         """
         Vector similarity search on :Community nodes (root and mid level only).
 
-        Over-fetches from the index (capped) then filters by derived_user_id and limits to
-        top_k, so multi-tenant DBs still return up to top_k results.
-        Uses community_summary_embedding_idx. Each result: community_id, summary, level, keywords_json, score.
+        Over-fetches from the index (candidate_k = top_k * overfetch factor, capped) then
+        filters by derived_user_id and level; trims to top_k so multi-tenant DBs return
+        up to top_k results. Uses community_summary_embedding_idx.
+        Each result: community_id, summary, level, keywords_json, score.
         """
         if not query_vector:
             return []
-        fetch_k = min(_VECTOR_SEARCH_FETCH_MAX, top_k * 2)
+        # Over-fetch so that after filtering by derived_user_id and level we still have up to top_k
+        candidate_k = min(_VECTOR_SEARCH_FETCH_MAX, top_k * 5)
         driver = self._get_driver()
         with driver.session(database=self._database) as session:
             result = session.run(
                 """
-                CALL db.index.vector.queryNodes('community_summary_embedding_idx', $fetch_k, $query_vector)
+                CALL db.index.vector.queryNodes('community_summary_embedding_idx', $candidate_k, $query_vector)
                 YIELD node, score
                 WHERE node.derived_user_id = $user_id AND node.level IN ['root', 'mid']
                 RETURN node.community_id AS community_id, node.summary AS summary,
@@ -748,7 +750,7 @@ class Neo4jService:
                 LIMIT $top_k
                 """,
                 query_vector=query_vector,
-                fetch_k=fetch_k,
+                candidate_k=candidate_k,
                 top_k=top_k,
                 user_id=user_id,
             )
