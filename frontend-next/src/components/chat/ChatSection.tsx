@@ -199,15 +199,37 @@ export function ChatSection({ documents = [], token }: ChatSectionProps) {
     }
   }, [inputValue, isLoading, token, sessionId]);
 
+  const handleClear = () => {
+    setMessages([]);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(CHAT_SESSION_KEY);
+    }
+  };
+
   return (
     <section className="flex flex-1 min-h-0 flex-col px-4 py-6">
       <header className="shrink-0 mb-3">
-        <h2 className="font-heading text-lg font-semibold tracking-tight text-foreground">
-          Ask your brain
-        </h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Chat with your uploaded documents.
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="font-heading text-lg font-semibold tracking-tight text-foreground">
+              Ask your brain
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Chat with your uploaded documents.
+            </p>
+          </div>
+          {messages.length > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={handleClear}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
       </header>
 
       {documents.length > 0 && (
@@ -231,30 +253,51 @@ export function ChatSection({ documents = [], token }: ChatSectionProps) {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 rounded-lg border border-border bg-card/50 overflow-auto flex flex-col">
+      <div className="flex-1 min-h-0 rounded-xl border border-border bg-card/60 overflow-auto flex flex-col scroll-smooth shadow-inner/5">
         {messages.length === 0 && !isLoading ? (
-          <div className="flex flex-1 min-h-[10rem] flex-col items-center justify-center p-4 text-center">
-            <MessageIcon className="h-10 w-10 text-muted-foreground/60 mb-3" />
-            <p className="text-sm text-muted-foreground">
+          <div className="relative flex flex-1 min-h-[10rem] flex-col items-center justify-center p-6 text-center">
+            <div
+              className="pointer-events-none absolute inset-0 rounded-xl border border-dashed border-muted-foreground/10 [background-image:radial-gradient(circle_at_top,_hsl(var(--border))_1px,_transparent_0)] [background-size:32px_32px] opacity-70"
+              aria-hidden
+            />
+            <MessageIcon className="relative h-10 w-10 text-muted-foreground/60 mb-3" />
+            <p className="relative text-sm font-medium text-foreground">
               No messages yet — ask anything about your documents.
+            </p>
+            <p className="relative mt-1 text-xs text-muted-foreground max-w-xs">
+              Your conversation stays local to this browser session until you refresh or clear it.
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 p-3">
+          <div className="flex flex-col gap-3 p-3 pb-4">
             {messages.map((m, i) => (
               <div
                 key={i}
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
                     m.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-foreground"
+                      ? "bg-primary text-primary-foreground rounded-br-md"
+                      : "bg-muted text-foreground rounded-bl-md"
                   }`}
                 >
+                  <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] opacity-80">
+                    {m.role === "user" ? "You" : "AI"}
+                  </div>
                   <p className="whitespace-pre-wrap">
-                    {m.role === "assistant" && m.content === "" && isLoading ? "Thinking…" : m.content}
+                    {m.role === "assistant" && m.content === "" && isLoading ? (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="sr-only">Assistant is typing</span>
+                        <span className="inline-flex gap-1">
+                          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:-0.2s]" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:-0.05s]" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce" />
+                        </span>
+                      </span>
+                    ) : (
+                      m.content
+                    )}
                   </p>
                   {m.role === "assistant" && m.sources && m.sources.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
@@ -285,33 +328,40 @@ export function ChatSection({ documents = [], token }: ChatSectionProps) {
         </p>
       )}
 
-      <div className="shrink-0 pt-3 flex gap-2 items-end">
-        <textarea
-          ref={textareaRef}
-          placeholder="Type a message…"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          rows={1}
-          disabled={isLoading}
-          className="flex-1 min-h-[40px] max-h-[120px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label="Chat message input"
-        />
-        <Button
-          type="button"
-          size="icon"
-          className="shrink-0 h-[40px] w-[40px]"
-          onClick={handleSend}
-          disabled={isLoading || !inputValue.trim()}
-          aria-label="Send message"
-        >
-          <SendIcon className="h-4 w-4" />
-        </Button>
+      <div className="shrink-0 pt-3 space-y-1.5">
+        <div className="flex items-end gap-2 rounded-xl border border-input bg-background/80 px-3 py-2 shadow-sm">
+          <textarea
+            ref={textareaRef}
+            placeholder="Ask a question about your brain…"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            rows={1}
+            disabled={isLoading}
+            className="flex-1 min-h-[40px] max-h-[120px] resize-none bg-transparent px-0 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Chat message input"
+          />
+          <Button
+            type="button"
+            size="icon"
+            className="shrink-0 h-9 w-9 rounded-full"
+            onClick={handleSend}
+            disabled={isLoading || !inputValue.trim()}
+            aria-label="Send message"
+          >
+            <SendIcon className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex justify-between items-center px-0.5">
+          <p className="text-[10px] text-muted-foreground">
+            Press Enter to send, Shift+Enter for a new line.
+          </p>
+        </div>
       </div>
     </section>
   );

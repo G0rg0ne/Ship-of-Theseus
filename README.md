@@ -268,6 +268,11 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
   - `CHAT_HISTORY_TTL_SECONDS` - Redis TTL for chat history (default: `86400`, 24h)
   - `CHAT_HISTORY_WINDOW` - Max conversation turns (user + assistant pairs) sent to synthesis (default: `6`); limits token growth in long chats. Use `0` to disable history (empty context). Chat message roles in Redis/API are `user` | `assistant` (aligned with frontend).
 
+### Docker data directories
+
+- **Redis and Neo4j**: In local Docker Compose, Redis and Neo4j data are stored under the project-relative `./data/redis` and `./data/neo4j` directories on the host.
+- **PostgreSQL**: To avoid filesystem permission issues on macOS/Windows host mounts (e.g. `chmod ... Operation not permitted` during `initdb`), the PostgreSQL service now uses a Docker **named volume** `postgres_data` instead of a bind mount. This keeps the database files inside Docker's managed volume storage while still persisting data across container restarts. You can remove it with `docker volume rm postgres_data` (or `docker compose down -v` to drop all project volumes) if you want a fresh database.
+
 ## 📡 API Endpoints
 
 ### Authentication Endpoints
@@ -334,6 +339,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 
 - **Welcome (unauthenticated):** Sign up, sign in, animated node constellation and journey strip.
 - **Dashboard (authenticated):** Left sidebar (upload + document list), center (Knowledge Brain — metrics, force-directed graph, slide-in community panel), right panel (Ask your brain chat). Upload flow: upload PDF → process document → per-document graph preview → Add to Brain (triggers GraphRAG pipeline). Pipeline progress (community detection → summarization → embedding) is shown in the UI.
+  - The **Ask your brain** panel uses a fixed-height, scrollable conversation area so long chats never stretch the page; it includes a modern, unified input bar, a subtle typing indicator for the assistant, and a clear button to reset the current chat session.
 - **Admin (`/admin`, admin-only):** User list with per-user document counts, platform statistics (users, documents, entities, relationships, communities), system health (PostgreSQL, Neo4j, Redis), infrastructure & storage metrics (disk usage, Neo4j store size), and user management (toggle admin/active, delete user). Admins cannot demote or deactivate themselves or the last active admin.
 
 ## Testing

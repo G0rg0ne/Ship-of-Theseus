@@ -2058,3 +2058,48 @@ None. This is a stricter best-effort error reporting improvement; metrics remain
 - Consider surfacing the combined filesystem/Neo4j store-size error detail directly in the admin UI when store size is unavailable.
 
 ---
+
+## [2026-03-16 10:15] - FEATURE
+
+### Changes
+- Constrained the authenticated dashboard layout to a fixed viewport height using `h-screen overflow-hidden` so the main grid and side panels (including chat) scroll internally instead of the whole page growing with long conversations.
+- Refined the `ChatSection` UI with a fixed-height, scrollable message area, role labels on message bubbles, an animated typing indicator for the assistant, a unified rounded input bar with helper text, and a clear button that resets the current chat session and local history.
+- Enhanced the chat empty state with a subtle grid background hint and explanatory copy to better communicate how the session behaves.
+
+### Files Modified
+- `frontend-next/src/app/dashboard/page.tsx`
+- `frontend-next/src/components/chat/ChatSection.tsx`
+- `README.md`
+
+### Rationale
+Longer chats in the dashboard were causing the right-hand chat panel to effectively stretch the entire page, making the overall layout feel less like a fixed console and more like a long-scrolling document. By fixing the dashboard height to the viewport and ensuring the chat panel scrolls internally with a more polished UI, the conversation experience feels more contained, modern, and usable for extended sessions.
+
+### Breaking Changes
+None. The changes are purely presentational; existing chat behavior, API calls, and session handling remain the same.
+
+### Next Steps
+- Consider adding persisted chat history retrieval per session so users can restore past conversations across browser reloads.
+
+---
+
+## [2026-03-16 19:45] - CONFIG
+
+### Changes
+- Updated the Docker Compose PostgreSQL service to use a Docker named volume (`postgres_data`) instead of a bind-mounted host directory so that `initdb` no longer fails with `chmod ... Operation not permitted` on macOS/Windows filesystems.
+- Documented the new storage behaviour for Redis, Neo4j, and PostgreSQL data directories/volumes in the main `README.md`.
+
+### Files Modified
+- `docker-compose.yml`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Using a bind mount for the Postgres data directory caused permission errors when `initdb` attempted to change directory permissions on host filesystems that do not fully support Unix-style `chmod`, leading to an unhealthy `ship_postgres` container. A Docker named volume keeps the data inside Docker's managed storage where permissions are under Docker's control while still persisting across restarts, and avoids spurious permission failures on developer machines.
+
+### Breaking Changes
+Existing Postgres data stored under `./data/postgres` is no longer used by Docker Compose. A new `postgres_data` volume will be created the next time `docker compose up` runs. If you need to reset the database completely, run `docker compose down -v` to drop the volume.
+
+### Next Steps
+- Optionally add helper scripts or documentation for backing up and restoring the `postgres_data` volume for developers who want to persist or migrate local database state.
+
+---

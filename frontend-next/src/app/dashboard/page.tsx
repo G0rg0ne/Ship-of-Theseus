@@ -128,14 +128,14 @@ export default function DashboardPage() {
 
   if (authLoading || !token) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-background">
+      <main className="h-screen overflow-hidden flex items-center justify-center bg-background">
         <div className="animate-pulse text-muted-foreground">Loading…</div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen flex flex-col bg-background bg-dot-grid">
+    <main className="h-screen overflow-hidden flex flex-col bg-background bg-dot-grid">
       <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div
           className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
