@@ -10,7 +10,10 @@ import {
   ApiError,
   type DocumentListItem,
   type SourceAttribution,
+  type UserBrain,
 } from "@/lib/api";
+
+const NO_BRAIN_REPLY = "Please upload your document first.";
 import { cn } from "@/lib/utils";
 
 const getApiBaseUrl = () =>
@@ -35,12 +38,20 @@ export interface ChatMessage {
 interface ChatSectionProps {
   documents?: DocumentListItem[];
   token?: string | null;
+  /** When loaded, used to skip the API when there is no graph/brain yet (mirrors POST /api/query). */
+  brain?: UserBrain | null;
+  brainLoading?: boolean;
 }
 
 /**
  * Chat section: query the GraphRAG brain. Conversation history is kept per session (localStorage).
  */
-export function ChatSection({ documents = [], token }: ChatSectionProps) {
+export function ChatSection({
+  documents = [],
+  token,
+  brain = null,
+  brainLoading = false,
+}: ChatSectionProps) {
   const [inputValue, setInputValue] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +87,20 @@ export function ChatSection({ documents = [], token }: ChatSectionProps) {
     if (!text || isLoading) return;
     if (!token) {
       setError("Sign in to chat with your brain.");
+      return;
+    }
+    const hasGraphBrain =
+      brainLoading ||
+      (brain != null &&
+        (brain.document_count > 0 || brain.total_nodes > 0 || brain.community_count > 0));
+    if (!hasGraphBrain) {
+      setError(null);
+      setInputValue("");
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: text },
+        { role: "assistant", content: NO_BRAIN_REPLY },
+      ]);
       return;
     }
     setError(null);
@@ -173,7 +198,7 @@ export function ChatSection({ documents = [], token }: ChatSectionProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, isLoading, token, sessionId]);
+  }, [inputValue, isLoading, token, sessionId, brain, brainLoading]);
 
   const handleClear = () => {
     setMessages([]);

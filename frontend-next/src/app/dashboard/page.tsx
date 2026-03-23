@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 export default function DashboardPage() {
   const router = useRouter();
   const { token, user, isLoading: authLoading, logout } = useAuth();
-  const { mutate: mutateBrain } = useBrain(token);
+  const { brain, isLoading: brainLoading, mutate: mutateBrain } = useBrain(token);
   const uploadRef = useRef<PdfUploadHandle | null>(null);
 
   useEffect(() => {
@@ -218,7 +218,12 @@ export default function DashboardPage() {
           variants={itemVariants}
           className="hidden min-h-0 w-[380px] min-w-[320px] shrink-0 flex-col overflow-hidden border-border bg-background/50 lg:flex"
         >
-          <ChatSection documents={documents} token={token} />
+          <ChatSection
+            documents={documents}
+            token={token}
+            brain={brain}
+            brainLoading={brainLoading}
+          />
         </motion.aside>
       </motion.div>
     </main>

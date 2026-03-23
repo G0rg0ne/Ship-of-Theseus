@@ -1,5 +1,26 @@
 # Development log
 
+## [2026-03-23 23:30] - FEATURE
+
+### Changes
+- **Chat with no brain:** `POST /api/query` checks `get_user_graph` before running the pipeline; if the user has no graph nodes, it responds with `Please upload your document first.` (`mode_used: none`, empty sources). Streaming mode emits one terminal SSE `done` event with that answer.
+- **Dashboard chat:** `ChatSection` receives `brain` / `brainLoading` from `useBrain` and shows the same message locally when counts are zero (avoids a round trip when SWR already knows the brain is empty).
+
+### Files Modified
+- `backend/app/api/v1/endpoints/query.py`
+- `frontend-next/src/components/chat/ChatSection.tsx`
+- `frontend-next/src/app/dashboard/page.tsx`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Users should get a clear onboarding message instead of a generic query failure or empty LLM output when they have not uploaded and saved a document graph yet.
+
+### Breaking Changes
+None.
+
+---
+
 ## [2026-03-23 23:00] - BUGFIX
 
 ### Changes

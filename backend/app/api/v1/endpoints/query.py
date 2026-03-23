@@ -6,9 +6,11 @@ and return the answer with source attribution. Conversation history is persisted
 Set body.stream=true for SSE streaming of synthesis tokens.
 """
 import json
-from typing import Optional
+import uuid
+from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.deps import get_current_user
@@ -21,10 +23,25 @@ from app.services.query_service import run_query_pipeline, run_query_pipeline_st
 
 router = APIRouter()
 
+NO_BRAIN_ANSWER = "Please upload your document first."
+
 
 def get_neo4j_service(request: Request) -> Optional[Neo4jService]:
     """Dependency: Neo4j service from app.state (None if not configured)."""
     return getattr(request.app.state, "neo4j_service", None)
+
+
+async def _stream_no_brain(session_id: Optional[str]) -> AsyncIterator[str]:
+    """SSE stream with a single terminal event when the user has no graph / brain data yet."""
+    sid = session_id or str(uuid.uuid4())
+    payload = {
+        "done": True,
+        "answer": NO_BRAIN_ANSWER,
+        "mode_used": "none",
+        "session_id": sid,
+        "sources": [],
+    }
+    yield f"data: {json.dumps(payload)}\n\n"
 
 
 async def _stream_events(user_id: str, question: str, mode: str, session_id: Optional[str], neo4j: Neo4jService):
@@ -65,6 +82,22 @@ async def query_brain(
     user_id = str(current_user.id)
     mode = body.mode.value if isinstance(body.mode, SearchMode) else (body.mode or "auto")
     question = body.question.strip()
+
+    nodes, _ = await run_in_threadpool(neo4j.get_user_graph, user_id)
+    if not nodes:
+        sid = body.session_id or str(uuid.uuid4())
+        if body.stream:
+            return StreamingResponse(
+                _stream_no_brain(body.session_id),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        return QueryResponse(
+            answer=NO_BRAIN_ANSWER,
+            mode_used="none",
+            session_id=sid,
+            sources=[],
+        )
 
     if body.stream:
         return StreamingResponse(
