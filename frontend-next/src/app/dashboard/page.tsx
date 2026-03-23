@@ -150,6 +150,12 @@ export default function DashboardPage() {
             <span>Ship of Theseus</span>
           </Link>
           <div className="flex items-center gap-3">
+            <Link
+              href="/how-it-works"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              How it works?
+            </Link>
             {user?.is_admin && (
               <Link
                 href="/admin"

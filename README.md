@@ -42,6 +42,7 @@ You can think of it as a **GraphRAG pipeline** wrapped in a user‑friendly web 
     - PDF upload and processing flow
     - Per‑document graph preview
     - “Knowledge Brain” view (merged graph & metrics)
+    - In-app **How it works?** guide (`/how-it-works`, public; linked from the welcome page and dashboard header)
     - Auth pages and admin portal
 - **Backend**: FastAPI
   - REST API for auth, document upload, extraction, graph persistence, and admin
@@ -112,7 +113,7 @@ Ship of Theseus is a **GraphRAG knowledge brain** for long-form documents: you u
 | Path | Purpose |
 |------|---------|
 | `backend/` | FastAPI app: API, auth, extraction, GraphRAG pipeline, Neo4j, Redis, admin |
-| `frontend-next/` | Next.js 14 app (TypeScript, Tailwind, shadcn/ui): welcome, dashboard, admin |
+| `frontend-next/` | Next.js 14 app (TypeScript, Tailwind, shadcn/ui): welcome, dashboard, how-it-works guide, admin |
 | `shared/` | Shared Python utilities and helpers |
 | `tests/` | Python test suite (pytest) |
 | `assets/` | Screenshots and diagrams for the README |
@@ -338,6 +339,7 @@ See `.env.example` (project root) for a template. **If upgrading from the previo
 ## Frontend Pages / Features
 
 - **Welcome (unauthenticated):** Sign up, sign in, animated node constellation and journey strip.
+- **How it works (`/how-it-works`, public):** Explains the GraphRAG pipeline, dashboard areas (upload, document graph, brain graph, chat), real-time graph visualization, and a quick-start checklist. Linked from the **welcome** page (before sign-in) and from the **dashboard** header as **How it works?** Signed-in users see dashboard CTAs; guests see sign-in CTAs.
 - **Dashboard (authenticated):** Left sidebar (upload + document list), center (Knowledge Brain — metrics, force-directed graph, slide-in community panel), right panel (Ask your brain chat). Upload flow: upload PDF → process document → per-document graph preview → Add to Brain (triggers GraphRAG pipeline). Pipeline progress (community detection → summarization → embedding) is shown in the UI.
   - The **Ask your brain** panel uses a fixed-height, scrollable conversation area so long chats never stretch the page; it includes a modern, unified input bar, a subtle typing indicator for the assistant, and a clear button to reset the current chat session.
 - **Admin (`/admin`, admin-only):** User list with per-user document counts, platform statistics (users, documents, entities, relationships, communities), system health (PostgreSQL, Neo4j, Redis), infrastructure & storage metrics (disk usage, Neo4j store size), and user management (toggle admin/active, delete user). Admins cannot demote or deactivate themselves or the last active admin.

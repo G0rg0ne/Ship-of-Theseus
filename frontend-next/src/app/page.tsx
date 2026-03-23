@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { FileText, Network, Brain, Users } from "lucide-react";
@@ -80,6 +81,18 @@ export default function AuthPage() {
               Build your knowledge brain from documents. Extract entities and
               relationships into a graph, then explore your personal knowledge
               base.
+            </motion.p>
+            <motion.p variants={item} className="mt-3 max-w-md">
+              <Link
+                href="/how-it-works"
+                className="text-sm font-medium text-primary hover:underline underline-offset-4"
+              >
+                How it works?
+              </Link>
+              <span className="text-sm text-muted-foreground">
+                {" "}
+                — see the pipeline, dashboard, and Q&amp;A before you register.
+              </span>
             </motion.p>
 
             {/* Horizontal journey strip */}

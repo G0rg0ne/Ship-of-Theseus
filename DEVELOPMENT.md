@@ -1,5 +1,28 @@
 # Development log
 
+## [2026-03-23 12:00] - FEATURE
+
+### Changes
+- Added authenticated route **`/how-it-works`** with an in-app guide: pipeline overview (upload → extract → community graph → explore), feature sections (document upload, document graph, brain graph, chat/Q&A, real-time visualization), quick-start checklist, and CTAs back to the dashboard.
+- Dashboard header now includes a **How it works?** link to that page (next to Admin for admins).
+
+### Files Modified
+- `frontend-next/src/app/how-it-works/page.tsx` (new)
+- `frontend-next/src/app/dashboard/page.tsx`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Users need a single place to learn how to use the app, what each panel does, and how GraphRAG-style Q&A relates to their documents and live graphs.
+
+### Breaking Changes
+None.
+
+### Next Steps
+Optional: add a matching link from the welcome page for logged-out users, or extract shared header icons to a small component to avoid duplication.
+
+---
+
 ## [2026-03-14] - BUGFIX: Filter entity hits by QUERY_SIMILARITY_THRESHOLD before neighborhood expansion
 
 ### Changes
