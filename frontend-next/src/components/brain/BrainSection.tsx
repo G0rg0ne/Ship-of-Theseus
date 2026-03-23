@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrainMetrics } from "./BrainMetrics";
@@ -86,10 +88,18 @@ export function BrainSection({ token, onBrainCleared }: BrainSectionProps) {
   };
 
   return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+    >
     <Card variant="accent">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle className="font-heading">Knowledge Brain</CardTitle>
+          <CardTitle className="flex items-center gap-2 font-heading">
+            <Brain className="h-5 w-5 text-primary" aria-hidden />
+            Knowledge Brain
+          </CardTitle>
           <CardDescription>
             Your merged knowledge graph and communities across all documents.
           </CardDescription>
@@ -145,5 +155,6 @@ export function BrainSection({ token, onBrainCleared }: BrainSectionProps) {
         }}
       />
     </Card>
+    </motion.div>
   );
 }

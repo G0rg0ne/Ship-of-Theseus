@@ -1,5 +1,66 @@
 # Development log
 
+## [2026-03-23 23:00] - BUGFIX
+
+### Changes
+- **Document list (collapsed sidebar):** Empty and loading states no longer render the full “No documents yet” card (which overflowed the narrow rail and referenced “panel above”). Collapsed mode now shows a single icon tile with a tooltip; loading shows a compact skeleton + tooltip.
+
+### Files Modified
+- `frontend-next/src/components/documents/DocumentList.tsx`
+- `DEVELOPMENT.md`
+
+### Rationale
+Collapsed sidebar width cannot fit paragraph copy; users should see a minimal affordance and read help on hover.
+
+### Breaking Changes
+None.
+
+---
+
+## [2026-03-23 22:20] - FEATURE
+
+### Changes
+- **Dashboard UI modernization (Next.js):** Collapsible left sidebar with `localStorage` persistence (`dashboard-sidebar-collapsed`), CSS vars `--sidebar-width` / `--sidebar-collapsed-width`, and auto-expand when a PDF pipeline starts from compact mode.
+- **Layout components:** `DashboardHeader` (breadcrumb, greeting, avatar + Radix dropdown for account actions) and `DashboardSidebar` (tooltips, single `PdfUpload` instance with `forwardRef` / `openFilePicker`).
+- **New shadcn-style UI primitives:** `tooltip`, `dropdown-menu`, `avatar`, `badge`, `skeleton`, `separator`, `scroll-area` (plus new Radix packages in `frontend-next/package.json`).
+- **PdfUpload:** `forwardRef` + `PdfUploadHandle`, optional `compact` + `onExpandForUpload`, Lucide `FileUp` in header.
+- **Brain metrics:** Lucide icons, count-up animation, skeleton loading, relative “last updated” with tooltip.
+- **Document list:** `ScrollArea`, node/edge badges, improved selection chrome, collapsed icon column with tooltips.
+- **Chat:** Lucide icons, `ScrollArea`, `Badge` sources, suggested prompts empty state, input focus ring, message enter animations.
+- **Dashboard page:** Flex layout (sidebar + main + chat), Framer Motion stagger on columns, `AnimatePresence` for graph panels, sliding pill tab indicator.
+
+### Files Modified
+- `frontend-next/package.json`
+- `frontend-next/src/app/dashboard/page.tsx`
+- `frontend-next/src/app/globals.css`
+- `frontend-next/src/components/layout/Header.tsx` (new)
+- `frontend-next/src/components/layout/Sidebar.tsx` (new)
+- `frontend-next/src/components/ui/tooltip.tsx` (new)
+- `frontend-next/src/components/ui/dropdown-menu.tsx` (new)
+- `frontend-next/src/components/ui/avatar.tsx` (new)
+- `frontend-next/src/components/ui/badge.tsx` (new)
+- `frontend-next/src/components/ui/skeleton.tsx` (new)
+- `frontend-next/src/components/ui/separator.tsx` (new)
+- `frontend-next/src/components/ui/scroll-area.tsx` (new)
+- `frontend-next/src/components/upload/PdfUpload.tsx`
+- `frontend-next/src/components/brain/BrainSection.tsx`
+- `frontend-next/src/components/brain/BrainMetrics.tsx`
+- `frontend-next/src/components/documents/DocumentList.tsx`
+- `frontend-next/src/components/chat/ChatSection.tsx`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Align the in-app workspace with the product’s “knowledge brain” theme: clearer hierarchy, consistent iconography, accessible patterns (dropdown, tooltips, scroll regions), and motion that reinforces context without distracting from graphs and Q&A.
+
+### Breaking Changes
+None. `PdfUpload` remains a named export; consumers must use `forwardRef` types if they attach a ref.
+
+### Next Steps
+Optional: add `tailwindcss-animate` if we want Radix-style `animate-in` classes on menus/tooltips.
+
+---
+
 ## [2026-03-23 14:30] - DOCS / FEATURE
 
 ### Changes

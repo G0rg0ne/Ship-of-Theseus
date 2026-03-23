@@ -4,6 +4,9 @@
 
 @layer base {
   :root {
+    /* Dashboard layout (collapsible sidebar) */
+    --sidebar-width: 280px;
+    --sidebar-collapsed-width: 64px;
     --background: 220 20% 97%;
     --foreground: 220 20% 10%;
     --card: 0 0% 100%;
@@ -76,6 +79,10 @@
     @apply rounded-xl border border-amber-500/10 bg-card shadow-2xl;
     box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.04) inset,
       0 25px 50px -12px rgba(0, 0, 0, 0.4);
+  }
+
+  .sidebar-surface {
+    @apply border-r border-border bg-background/50 transition-[width] duration-300 ease-out;
   }
 
   /* Subtle glow for primary (amber) elements */

@@ -37,11 +37,15 @@ You can think of it as a **GraphRAG pipeline** wrapped in a user‑friendly web 
 
 ## Architecture at a glance
 
-- **Frontend**: Next.js 14 (TypeScript, Tailwind, shadcn/ui)
+- **Frontend**: Next.js 14 (TypeScript, Tailwind, shadcn/ui, Radix primitives, Framer Motion, Lucide)
   - Dark nautical dashboard with:
+    - **Collapsible sidebar** (upload + documents; width persisted in `localStorage`; compact PDF icon when collapsed)
+    - **Header** with breadcrumb (Dashboard / current graph view), avatar, and user **dropdown** (profile, How it works, Admin, log out)
     - PDF upload and processing flow
     - Per‑document graph preview
-    - “Knowledge Brain” view (merged graph & metrics)
+    - “Knowledge Brain” view (merged graph & animated metric cards)
+    - **Chat** panel with suggested prompts, scroll area, and message motion
+    - Segmented **tab control** (Document graph / Brain graph) with animated indicator
     - In-app **How it works?** guide (`/how-it-works`, public; linked from the welcome page and dashboard header)
     - Auth pages and admin portal
 - **Backend**: FastAPI

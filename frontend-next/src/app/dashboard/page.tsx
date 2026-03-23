@@ -1,61 +1,26 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { PdfUpload } from "@/components/upload/PdfUpload";
+import { motion, AnimatePresence } from "framer-motion";
+import { Network } from "lucide-react";
 import { BrainSection } from "@/components/brain/BrainSection";
 import { ChatSection } from "@/components/chat/ChatSection";
-import { DocumentList } from "@/components/documents/DocumentList";
 import { DocumentGraphView } from "@/components/upload/DocumentGraphView";
+import { DashboardHeader } from "@/components/layout/Header";
+import { DashboardSidebar } from "@/components/layout/Sidebar";
+import type { PdfUploadHandle } from "@/components/upload/PdfUpload";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrain } from "@/hooks/useBrain";
 import * as api from "@/lib/api";
 import type { DocumentListItem } from "@/lib/api";
-
-function AnchorIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 22V8" />
-      <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
-      <circle cx="12" cy="5" r="3" />
-    </svg>
-  );
-}
-
-function LogOutIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" x2="9" y1="12" y2="12" />
-    </svg>
-  );
-}
+import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
   const router = useRouter();
   const { token, user, isLoading: authLoading, logout } = useAuth();
   const { mutate: mutateBrain } = useBrain(token);
+  const uploadRef = useRef<PdfUploadHandle | null>(null);
 
   useEffect(() => {
     if (!authLoading && !token) {
@@ -121,150 +86,141 @@ export default function DashboardPage() {
   const [greeting, setGreeting] = useState("Welcome");
   useEffect(() => {
     const hour = new Date().getHours();
-    setGreeting(
-      hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
-    );
+    setGreeting(hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
   }, []);
+
+  const centerViewLabel = centerTab === "document" ? "Document graph" : "Brain graph";
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.06, delayChildren: 0.04 },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 8 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
+  };
 
   if (authLoading || !token) {
     return (
-      <main className="h-screen overflow-hidden flex items-center justify-center bg-background">
+      <main className="flex h-screen items-center justify-center overflow-hidden bg-background">
         <div className="animate-pulse text-muted-foreground">Loading…</div>
       </main>
     );
   }
 
   return (
-    <main className="h-screen overflow-hidden flex flex-col bg-background bg-dot-grid">
-      <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div
-          className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
-          aria-hidden
-        />
-        <div className="w-full relative flex h-14 items-center justify-between px-4 sm:px-6">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2.5 font-heading font-semibold text-foreground transition-opacity hover:opacity-90"
-          >
-            <AnchorIcon className="h-6 w-6 text-primary" />
-            <span>Ship of Theseus</span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/how-it-works"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground"
-            >
-              How it works?
-            </Link>
-            {user?.is_admin && (
-              <Link
-                href="/admin"
-                className="text-sm font-medium text-muted-foreground hover:text-foreground"
-              >
-                Admin
-              </Link>
-            )}
-            <div className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                {initials}
-              </span>
-              <span className="text-sm font-medium text-foreground">
-                {displayName}
-              </span>
-            </div>
-            <div className="h-4 w-px bg-border" aria-hidden />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="gap-1.5 text-muted-foreground hover:text-foreground"
-            >
-              <LogOutIcon className="h-3.5 w-3.5" />
-              Log out
-            </Button>
-          </div>
-        </div>
-      </header>
+    <main className="flex h-screen flex-col overflow-hidden bg-background bg-dot-grid">
+      <DashboardHeader
+        displayName={displayName}
+        greeting={greeting}
+        email={user?.email ?? null}
+        initials={initials}
+        isAdmin={user?.is_admin}
+        centerViewLabel={centerViewLabel}
+        onLogout={handleLogout}
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_380px] flex-1 min-h-0 w-full">
-        {/* Left sidebar: greeting, upload, document list */}
-        <aside className="min-w-0 overflow-auto border-r border-border bg-background/50">
-          <div className="flex flex-col gap-6 px-4 py-6">
-            <div>
-              <h1 className="font-heading text-lg font-semibold text-foreground">
-                {greeting}, {displayName}
-              </h1>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Documents & knowledge graph.
-              </p>
-            </div>
-            <section className="space-y-2">
-              <h2 className="font-heading text-sm font-semibold tracking-tight text-foreground pl-2 border-l-2 border-primary/70">
-                Upload & process
-              </h2>
-              <PdfUpload token={token} onSaveComplete={handleSaveComplete} />
-            </section>
-            <DocumentList
-              documents={documents}
-              isLoading={documentsLoading}
-              onSelect={handleSelectDocument}
-              selectedDocumentName={selectedDocument?.document_name ?? null}
-            />
-          </div>
-        </aside>
+      <motion.div
+        className="flex min-h-0 flex-1 w-full"
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+      >
+        <motion.div variants={itemVariants} className="flex min-h-0 shrink-0">
+          <DashboardSidebar
+            token={token}
+            onSaveComplete={handleSaveComplete}
+            documents={documents}
+            documentsLoading={documentsLoading}
+            onSelectDocument={handleSelectDocument}
+            selectedDocumentName={selectedDocument?.document_name ?? null}
+            uploadRef={uploadRef}
+          />
+        </motion.div>
 
-        {/* Center: document graph vs brain graph */}
-        <div className="min-w-0 overflow-auto border-r border-border">
-          <div className="h-full flex flex-col px-4 py-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex gap-1 rounded-full border border-border bg-muted/40 p-0.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setCenterTab("document")}
-                  className={[
-                    "px-2.5 py-1 rounded-full transition-colors",
-                    centerTab === "document"
-                      ? "bg-background text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
-                >
-                  Document graph
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCenterTab("brain")}
-                  className={[
-                    "px-2.5 py-1 rounded-full transition-colors",
-                    centerTab === "brain"
-                      ? "bg-background text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
-                >
-                  Brain graph
-                </button>
-              </div>
-            </div>
-
-            {centerTab === "document" ? (
-              <DocumentGraphView graph={selectedDocumentGraph} communities={null} />
-            ) : (
-              <BrainSection
-                token={token}
-                onBrainCleared={() => {
-                  setDocuments([]);
-                  setSelectedDocument(null);
-                  setSelectedDocumentGraph(null);
+        <motion.div
+          variants={itemVariants}
+          className="min-w-0 flex-1 overflow-auto border-r border-border"
+        >
+          <div className="flex h-full min-h-0 flex-col space-y-4 px-4 py-6">
+            <div className="relative flex w-full max-w-md rounded-full border border-border bg-muted/40 p-1 text-sm">
+              <motion.div
+                className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-6px)] rounded-full bg-background shadow-sm"
+                initial={false}
+                animate={{
+                  x: centerTab === "document" ? 0 : "calc(100% + 4px)",
                 }}
+                transition={{ type: "spring", stiffness: 420, damping: 34 }}
               />
-            )}
-          </div>
-        </div>
+              <button
+                type="button"
+                onClick={() => setCenterTab("document")}
+                className={cn(
+                  "relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium transition-colors sm:text-sm",
+                  centerTab === "document" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Network className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                Document graph
+              </button>
+              <button
+                type="button"
+                onClick={() => setCenterTab("brain")}
+                className={cn(
+                  "relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium transition-colors sm:text-sm",
+                  centerTab === "brain" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Brain graph
+              </button>
+            </div>
 
-        {/* Right panel: chat */}
-        <aside className="hidden lg:flex flex-col min-w-0 min-h-0 border-border bg-background/50 overflow-hidden">
+            <AnimatePresence mode="wait">
+              {centerTab === "document" ? (
+                <motion.div
+                  key="doc"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.2 }}
+                  className="min-h-0 flex-1"
+                >
+                  <DocumentGraphView graph={selectedDocumentGraph} communities={null} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="brain"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.2 }}
+                  className="min-h-0 flex-1"
+                >
+                  <BrainSection
+                    token={token}
+                    onBrainCleared={() => {
+                      setDocuments([]);
+                      setSelectedDocument(null);
+                      setSelectedDocumentGraph(null);
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
+
+        <motion.aside
+          variants={itemVariants}
+          className="hidden min-h-0 w-[380px] min-w-[320px] shrink-0 flex-col overflow-hidden border-border bg-background/50 lg:flex"
+        >
           <ChatSection documents={documents} token={token} />
-        </aside>
-      </div>
+        </motion.aside>
+      </motion.div>
     </main>
   );
 }
