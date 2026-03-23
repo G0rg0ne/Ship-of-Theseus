@@ -1,5 +1,28 @@
 # Development log
 
+## [2026-03-23 14:30] - DOCS / FEATURE
+
+### Changes
+- **`/how-it-works` is public:** Removed the auth redirect so visitors can read the guide before registering. Header and CTAs adapt: guests get “Back to sign in”, “Sign up or sign in”, and “Get started” → `/`; signed-in users keep dashboard links.
+- **Welcome page:** Added **How it works?** link (with short explainer text) under the hero blurb, pointing to `/how-it-works`.
+
+### Files Modified
+- `frontend-next/src/app/how-it-works/page.tsx`
+- `frontend-next/src/app/page.tsx`
+- `README.md`
+- `DEVELOPMENT.md`
+
+### Rationale
+Prospective users should understand the product (pipeline, GraphRAG Q&A, graphs) from the landing page without creating an account first.
+
+### Breaking Changes
+None.
+
+### Next Steps
+None.
+
+---
+
 ## [2026-03-23 12:00] - FEATURE
 
 ### Changes
@@ -19,7 +42,7 @@ Users need a single place to learn how to use the app, what each panel does, and
 None.
 
 ### Next Steps
-Optional: add a matching link from the welcome page for logged-out users, or extract shared header icons to a small component to avoid duplication.
+Optional: extract shared header icons to a small component to avoid duplication.
 
 ---
 
