@@ -1,5 +1,23 @@
 # Development log
 
+## [2026-03-25 12:00] - BUGFIX
+
+### Changes
+- **Dashboard layout types:** Restored `onMobileFilesOpen` on `DashboardHeader` and `mobileMode` on `DashboardSidebar` so `dashboard/page.tsx` matches component props; fixes Docker / `next build` type-check failures.
+
+### Files Modified
+- `frontend-next/src/components/layout/Header.tsx`
+- `frontend-next/src/components/layout/Sidebar.tsx`
+- `DEVELOPMENT.md`
+
+### Rationale
+The dashboard page passed mobile-only props while `Header` / `Sidebar` interfaces were missing those fields.
+
+### Breaking Changes
+None.
+
+---
+
 ## [2026-03-23 23:30] - FEATURE
 
 ### Changes

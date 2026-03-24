@@ -34,6 +34,8 @@ export interface DashboardSidebarProps {
   onSelectDocument: (doc: DocumentListItem) => void;
   selectedDocumentName: string | null;
   uploadRef: RefObject<PdfUploadHandle | null>;
+  /** Full-width, always expanded; no collapse control (mobile tab panel). */
+  mobileMode?: boolean;
 }
 
 export function DashboardSidebar({
@@ -44,6 +46,7 @@ export function DashboardSidebar({
   onSelectDocument,
   selectedDocumentName,
   uploadRef,
+  mobileMode = false,
 }: DashboardSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -72,20 +75,24 @@ export function DashboardSidebar({
     persistCollapsed(false);
   }, []);
 
-  const compact = Boolean(collapsed && mounted);
+  const compact = mobileMode ? false : Boolean(collapsed && mounted);
 
   return (
     <TooltipProvider delayDuration={300}>
       <aside
         className={cn(
           "sidebar-surface flex min-h-0 min-w-0 flex-col",
-          collapsed ? "w-[var(--sidebar-collapsed-width)]" : "w-[var(--sidebar-width)]"
+          mobileMode
+            ? "w-full"
+            : collapsed
+              ? "w-[var(--sidebar-collapsed-width)]"
+              : "w-[var(--sidebar-width)]"
         )}
       >
         <div
           className={cn(
             "flex min-h-0 flex-1 flex-col gap-6 py-6",
-            collapsed ? "items-center px-2" : "px-4"
+            compact ? "items-center px-2" : "px-4"
           )}
         >
           <section className={cn("w-full space-y-2", compact && "flex flex-col items-center")}>
@@ -128,32 +135,34 @@ export function DashboardSidebar({
           />
         </div>
 
-        <div
-          className={cn(
-            "mt-auto border-t border-border pt-3 pb-4",
-            collapsed ? "flex justify-center px-2" : "px-4"
-          )}
-        >
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
-                onClick={toggle}
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                {collapsed ? (
-                  <ChevronRight className="h-4 w-4" />
-                ) : (
-                  <ChevronLeft className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">{collapsed ? "Expand" : "Collapse"}</TooltipContent>
-          </Tooltip>
-        </div>
+        {!mobileMode && (
+          <div
+            className={cn(
+              "mt-auto border-t border-border pt-3 pb-4",
+              collapsed ? "flex justify-center px-2" : "px-4"
+            )}
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={toggle}
+                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                  {collapsed ? (
+                    <ChevronRight className="h-4 w-4" />
+                  ) : (
+                    <ChevronLeft className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{collapsed ? "Expand" : "Collapse"}</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       </aside>
     </TooltipProvider>
   );

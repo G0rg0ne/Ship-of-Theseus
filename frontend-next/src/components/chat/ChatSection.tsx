@@ -283,7 +283,7 @@ export function ChatSection({
             </div>
           </div>
         ) : (
-          <ScrollArea className="h-[min(420px,calc(100vh-16rem))] flex-1">
+          <ScrollArea className="h-full min-h-0 flex-1">
             <div className="flex flex-col gap-3 p-3 pb-4">
               <AnimatePresence initial={false}>
                 {messages.map((m, i) => (

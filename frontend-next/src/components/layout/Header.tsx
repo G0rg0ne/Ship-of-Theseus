@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Anchor, LogOut, Shield } from "lucide-react";
+import { Anchor, FolderOpen, LogOut, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,6 +23,8 @@ export interface DashboardHeaderProps {
   /** Second segment of breadcrumb, e.g. "Brain graph" */
   centerViewLabel: string;
   onLogout: () => void;
+  /** Opens the Files tab on narrow viewports (below `lg`). */
+  onMobileFilesOpen?: () => void;
 }
 
 export function DashboardHeader({
@@ -33,6 +35,7 @@ export function DashboardHeader({
   isAdmin,
   centerViewLabel,
   onLogout,
+  onMobileFilesOpen,
 }: DashboardHeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -41,7 +44,19 @@ export function DashboardHeader({
         aria-hidden
       />
       <div className="relative flex h-14 items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+          {onMobileFilesOpen ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground lg:hidden"
+              onClick={onMobileFilesOpen}
+              aria-label="Open files and upload"
+            >
+              <FolderOpen className="h-5 w-5" aria-hidden />
+            </Button>
+          ) : null}
           <Link
             href="/dashboard"
             className="flex shrink-0 items-center gap-2.5 font-heading font-semibold text-foreground transition-opacity hover:opacity-90"
